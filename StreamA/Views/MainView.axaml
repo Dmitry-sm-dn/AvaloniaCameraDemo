@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:StreamA.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="StreamA.Views.MainView"
+             x:DataType="vm:MainViewModel">
+  <Design.DataContext>
+    <!-- This only sets the DataContext for the previewer in an IDE,
+         to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+    <vm:MainViewModel />
+  </Design.DataContext>
+
+	<Grid RowDefinitions="Auto,Auto,Auto,*">
+		<TextBlock Grid.Row="0" Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+		<Border Grid.Row="1">
+			<TextBlock x:Name="StatusText" HorizontalAlignment="Center" Margin="5" Foreground="Red"/>
+		</Border>
+
+		<StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
+			<Button Content="Старт" Click="OnStartClick" Margin="5"/>
+			<Button Content="Стоп" Click="OnStopClick" Margin="5"/>
+			<Button x:Name="SwitchCameraButton" Content="Повернуть камеру" Click="OnSwitchCameraClick" Margin="5"/>
+			<Button x:Name="RetryButton" Content="Повторить" Click="OnRetryClick" Margin="5" IsVisible="False"/>
+		</StackPanel>
+
+		<Border Grid.Row="3" BorderThickness="1" BorderBrush="Black" Margin="10" Width="550" Height="450">
+			<Canvas x:Name="CameraHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+		</Border>
+	</Grid>
+</UserControl>
