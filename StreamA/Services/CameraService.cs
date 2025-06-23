@@ -90,7 +90,7 @@ public class CameraService : ICameraService
                 // Корректное завершение через токен
                 break;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Логирование или обработка ошибок
             }

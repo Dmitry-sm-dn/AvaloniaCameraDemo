@@ -149,7 +149,7 @@ public class CodeRecognizeService:ICodeRecognizeService
     public Result? CodeRecognize(Bitmap bitmap, PixelRect rect)
     {
         var source = ConvertToLuminanceSource(bitmap, rect, RGBLuminanceSource.BitmapFormat.Gray8);
-        return _barcoseReader?.Decode(source); ;
+        return _barcoseReader?.Decode(source);
     }
 
     public static RGBLuminanceSource ConvertToLuminanceSource(Bitmap bitmap, PixelRect rect, RGBLuminanceSource.BitmapFormat format)

@@ -171,12 +171,12 @@ public partial class MainView : UserControl
     {
         base.OnDetachedFromVisualTree(e);
 
+        _codeDetectedSubscription?.Dispose();
+        _codeRecognizeService?.Dispose();
+
         _cameraSubscription?.Dispose();
         _cameraService?.Dispose();
         if (_cameraProvider is IStatusProvider statusProvider)
             statusProvider.StatusChanged -= StatusChangedHandler;
-
-        _codeDetectedSubscription?.Dispose();
-        _codeRecognizeService?.Dispose();
     }
 }
