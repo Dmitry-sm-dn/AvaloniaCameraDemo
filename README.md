@@ -16,7 +16,7 @@
 - [Avalonia UI](https://avaloniaui.net/)
 - [ZXing.Net](https://github.com/micjahn/ZXing.Net)
 - [YoloSharp](https://github.com/dme-compunet/YoloSharp)
-- [AndroidX.Camera](https://developer.android.com/training/camerax)
+- [Camera2 API](https://developer.android.com/media/camera/camera2)
 
 ## 📦 Установка
 
