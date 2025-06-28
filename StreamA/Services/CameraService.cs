@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 namespace StreamA.Services;
 public interface ICameraProvider
 {
+    bool IsWorked { get; }//признак камера работает/не работает
     void Start(string host, int port);
     void Stop();
     void SwitchCamera(); // Для переключения между фронтальной и основной камерой
@@ -22,12 +23,15 @@ public interface IStatusProvider
 
 public interface ICameraService : IDisposable
 {
+    bool IsWorked { get; }//признак сервис запущен/остановлен
     IObservable<Bitmap> Frames { get; }
     void Start(string host, int port);
     void Stop();
 }
 public class CameraService : ICameraService
 {
+    public bool IsWorked => this._running;
+
     public IObservable<Bitmap> Frames => _frameSubject;
     private readonly Subject<Bitmap> _frameSubject = new();
 

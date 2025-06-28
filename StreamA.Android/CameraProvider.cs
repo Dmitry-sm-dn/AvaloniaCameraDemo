@@ -15,8 +15,9 @@ using System.Threading.Tasks;
 using StreamA.Services;
 
 namespace StreamA.Android;
-public class AndroidCameraProvider : ICameraProvider, IStatusProvider
+public class CameraProvider : ICameraProvider, IStatusProvider
 {
+    public bool IsWorked => _frameSender?.IsWorked ?? false;
     public event Action<string>? StatusChanged;
 
     private MainActivity? _mainActivity;
@@ -25,7 +26,7 @@ public class AndroidCameraProvider : ICameraProvider, IStatusProvider
     private int _port = 12345;
     private Action<string>? _statusHandler;// Обработчик статуса для UI-индикации
 
-    public AndroidCameraProvider(MainActivity mainActivity) =>
+    public CameraProvider(MainActivity mainActivity) =>
         _mainActivity = mainActivity ?? throw new ArgumentNullException(nameof(mainActivity));
 
     public void Start(string host, int port) =>
@@ -77,6 +78,7 @@ public class AndroidCameraProvider : ICameraProvider, IStatusProvider
     }
     public class Camera2FrameSender : CameraCaptureSession.StateCallback, ImageReader.IOnImageAvailableListener
     {
+        public bool IsWorked => _isRunning && _isConnecting;
         public CameraFacing CurrentFacing => _facing;
 
         private readonly Context _context;

@@ -30,7 +30,7 @@ public class MainActivity : AvaloniaMainActivity<App>
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
-        Locator.CurrentMutable.RegisterLazySingleton<ICameraProvider>(() => new AndroidCameraProvider(this));//platform-specific camera provider registration
+        Locator.CurrentMutable.RegisterLazySingleton<ICameraProvider>(() => new CameraProvider(this));//platform-specific camera provider registration
 
         base.OnCreate(savedInstanceState);
 
