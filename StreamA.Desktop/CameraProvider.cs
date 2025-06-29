@@ -103,7 +103,9 @@ namespace StreamA.Desktop
                 if (!_capture.IsOpened())
                 {
                     _capture?.Dispose();
+                    _capture = null!;
                     StatusChanged?.Invoke("Camera not opened.");
+                    return;
                 }
 
                 //Этот код выводит, например, MJPG, YUYV, NV12, GREY и т.д. — то, как драйвер интерпретирует пиксельный формат
@@ -114,7 +116,7 @@ namespace StreamA.Desktop
                 _captureThread = new Thread(CaptureLoop) { IsBackground = true };
                 _captureThread.Start();
 
-                StatusChanged?.Invoke($"Camera started => Backend API: {_capture?.GetBackendName()}; Opened with FourCC: {_fourccStr}");
+                StatusChanged?.Invoke($"Camera started => Backend API: {_capture?.GetBackendName()}; Opened with FourCC: {_fourccStr}; Resolution: {_capture?.FrameWidth}x{_capture?.FrameHeight}");
             }
 
             public void StopCapture()
@@ -126,6 +128,7 @@ namespace StreamA.Desktop
                 _captureThread?.Join();
                 _capture?.Release();
                 _capture?.Dispose();
+                _capture = null;
 
                 StatusChanged?.Invoke("Camera stopped");
             }

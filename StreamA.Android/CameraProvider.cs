@@ -185,6 +185,7 @@ public class CameraProvider : ICameraProvider, IStatusProvider
                 _imageReader.SetOnImageAvailableListener(this, _backgroundHandler);
 
                 manager.OpenCamera(_cameraId, new CameraStateCallback(this), _backgroundHandler);
+                StatusChanged?.Invoke($"Open resolution: {size.Width}x{size.Height}");
             }
             catch (Exception ex)
             {
