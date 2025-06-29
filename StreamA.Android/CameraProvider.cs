@@ -78,6 +78,7 @@ public class CameraProvider : ICameraProvider, IStatusProvider
     }
     public class Camera2FrameSender : CameraCaptureSession.StateCallback, ImageReader.IOnImageAvailableListener
     {
+        public event Action<string>? StatusChanged; // Для UI-индикации
         public bool IsWorked => _isRunning && _isConnecting;
         public CameraFacing CurrentFacing => _facing;
 
@@ -90,7 +91,6 @@ public class CameraProvider : ICameraProvider, IStatusProvider
         private TcpClient? _tcpClient;
         private bool _isRunning;
         private bool _isConnecting;
-        public event Action<string>? StatusChanged; // Для UI-индикации
         private CameraFacing _facing = CameraFacing.Back;
         private int _jpegOrientation = 0;// Угол поворота JPEG (0, 90, 180, 270)
 
@@ -148,6 +148,7 @@ public class CameraProvider : ICameraProvider, IStatusProvider
             _imageReader?.Close();
             _tcpClient?.Close();
             StopBackgroundThread();
+
             StatusChanged?.Invoke("Остановлено");
         }
 

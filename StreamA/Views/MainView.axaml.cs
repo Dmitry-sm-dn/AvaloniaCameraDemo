@@ -105,6 +105,9 @@ public partial class MainView : UserControl
         });
     private void OnStartClick(object? sender, RoutedEventArgs e)
     {
+        if (_cameraProvider?.IsWorked == true && _cameraService?.IsWorked == true)
+            return;
+
         // сервис распознавания кода
         _codeRecognizeService = Locator.Current.GetService<ICodeRecognizeService>();
         _codeDetectedSubscription = _codeRecognizeService?.Codes.Subscribe(onNext: CodeDetectedSubscription);
@@ -130,6 +133,9 @@ public partial class MainView : UserControl
 
     private void OnStopClick(object? sender, RoutedEventArgs e)
     {
+        if (_cameraProvider?.IsWorked == false && _cameraService?.IsWorked == false)
+            return;
+
         _codeDetectedSubscription?.Dispose();//отписка от сервиса распознавания кода
         _codeRecognizeService?.Dispose();//освобождение сервиса распознавания кода
 

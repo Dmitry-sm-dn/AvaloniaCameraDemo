@@ -26,7 +26,7 @@
 			<Button x:Name="RetryButton" Content="Повторить" Click="OnRetryClick" Margin="5" IsVisible="False"/>
 		</StackPanel>
 
-		<Border Grid.Row="3" BorderThickness="1" BorderBrush="Black" Margin="10" Width="550" Height="450">
+		<Border Grid.Row="3" BorderThickness="1" BorderBrush="Black" Margin="10" Width="640" Height="480">
 			<Canvas x:Name="CameraHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 		</Border>
 	</Grid>
