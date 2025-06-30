@@ -1,9 +1,15 @@
-﻿using LibVLCSharp.Shared;
+﻿using Avalonia.Controls;
+using DirectShowLib;
+using LibVLCSharp.Shared;
 using OpenCvSharp;
 using StreamA.Services;
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 
 namespace StreamA.Desktop
@@ -32,9 +38,10 @@ namespace StreamA.Desktop
         private IFrameSender CreateCameraSender()
         {
             if (OperatingSystem.IsLinux())
-                return new LibVlcSharpFrameSender(SendFrame, "/dev/video0", 640, 480);//linux
+                return new LibVlcSharpFrameSenderLinux(SendFrame, "/dev/video0", 640, 480);//linux
             if (OperatingSystem.IsWindows())
-                return new OpenCVSharp4FrameSender(SendFrame); //windous
+                //return new OpenCVSharp4FrameSender(SendFrame); //windous
+                return new LibVlcSharpFrameSenderWindows(SendFrame, "", 640, 480);//windows
 
             throw new PlatformNotSupportedException();
         }
@@ -84,19 +91,113 @@ namespace StreamA.Desktop
             }
         }
 
-        #region -- incapsulate camera frame linux --
-        public class LibVlcSharpFrameSender : IFrameSender
+        #region -- --
+        public sealed class LibVlcSharpFrameSenderWindows : IFrameSender
         {
-            public bool IsOpened => false;// _capture?.IsOpened() == true;
+            public bool IsOpened => _mediaPlayer?.State == VLCState.Opening;
             public event Action<string>? StatusChanged; // Для UI-индикации
 
-            private readonly string _devicePath;
-            private readonly uint _width, _height;
             private MediaPlayer? _mediaPlayer;
-            private IntPtr _buffer = IntPtr.Zero;
+            private readonly string _devicePath;
+            private IntPtr _buffer;
+            private readonly uint _width, _height;
             private readonly Action<byte[]> _onFrame;
 
-            public LibVlcSharpFrameSender(Action<byte[]> onFrame, string devicePath, uint width, uint height)
+            public LibVlcSharpFrameSenderWindows(Action<byte[]> onFrame, string devicePath, uint width, uint height)
+            {
+                var pathLib = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "libvlc", "win-x64");
+                Core.Initialize(pathLib);
+
+                _onFrame = onFrame;
+                _devicePath = devicePath;
+                _width = width;
+                _height = height;
+            }
+
+            public static List<string> GetVideoDeviceNames()
+            {
+                var devices = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice);
+                return devices.Select(d => d.Name).ToList();
+            }
+
+            public void Start()
+            {
+                var libVlc = new LibVLC(true);//true-debug
+                libVlc.Log += (sender, e) =>
+                {
+                    //Console.WriteLine($"[{e.Level}] {e.Module}: {e.Message}");
+                    lock (this)
+                    {
+                        using StreamWriter file = new("logLibVlc.txt", append: true, Encoding.UTF8);
+                        file.WriteLine($"[{DateTime.Now}=>{e.Level}] {e.Module}: {e.Message}");
+                    }
+                };
+
+                var media = new Media(libVlc, $"dshow://", FromType.FromLocation);
+                var cameraName = GetVideoDeviceNames().FirstOrDefault() ?? "";
+                //media.AddOption($":dshow-vdev={cameraName}");   // Название, не путь!
+                media.AddOption(":dshow-vdev=Logi C270 HD WebCam");
+                media.AddOption(":dshow-adev=none");            // Без аудио
+                media.AddOption(":live-caching=300");            // Меньше задержка, если нужно
+                //media.AddOption(":dshow-size=640x480");
+
+
+                _buffer = Marshal.AllocHGlobal((int)(_width * _height * 4));
+                _mediaPlayer = new MediaPlayer(media);
+                _mediaPlayer.SetVideoFormat("RV32", _width, _height, _width * 4);
+                _mediaPlayer.SetVideoCallbacks(
+                    lockCb: (opaque, planes) =>
+                    {
+                        unsafe
+                        {
+                            var planePtr = (IntPtr*)planes;
+                            planePtr[0] = _buffer;
+                        }
+                        return IntPtr.Zero;
+                    },
+                    unlockCb: (opaque, picture, planes) =>
+                    {
+                        // No-op(сырые данные)
+                    },
+                    displayCb: (opaque, picture) =>
+                    {
+                        unsafe
+                        {
+                            var span = new Span<byte>((void*)picture, (int)(_width * _height) * 4);
+                            _onFrame(span.ToArray()); // передаём кадр в обработку
+                        }
+                    }
+                );
+
+                _mediaPlayer.Play();
+            }
+
+            public void Stop()
+            {
+                _mediaPlayer?.Stop();
+                _mediaPlayer?.Dispose();
+
+                if (_buffer != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(_buffer);
+                    _buffer = IntPtr.Zero;
+                }
+            }
+        }
+        #endregion
+
+        #region -- incapsulate camera frame linux --
+        public class LibVlcSharpFrameSenderLinux : IFrameSender
+        {
+            public bool IsOpened => _mediaPlayer?.State == VLCState.Opening;
+            public event Action<string>? StatusChanged; // Для UI-индикации
+
+            private MediaPlayer? _mediaPlayer;
+            private readonly string _devicePath;
+            private readonly uint _width, _height;
+            private IntPtr _buffer = IntPtr.Zero;
+            private readonly Action<byte[]> _onFrame;
+            public LibVlcSharpFrameSenderLinux(Action<byte[]> onFrame, string devicePath, uint width, uint height)
             {
                 Core.Initialize();
 
@@ -110,8 +211,8 @@ namespace StreamA.Desktop
             {
                 var libVlc = new LibVLC();
                 var media = new Media(libVlc, $"v4l2://{_devicePath}", FromType.FromLocation);
+                
                 _mediaPlayer = new MediaPlayer(media);
-
                 _mediaPlayer.SetVideoFormat("RV32", _width, _height, _width * 4);
                 _mediaPlayer.SetVideoCallbacks(
                     lockCb: (opaque, planes) =>
@@ -149,6 +250,8 @@ namespace StreamA.Desktop
             public void Stop()
             {
                 _mediaPlayer?.Stop();
+                _mediaPlayer?.Dispose();
+
                 if (_buffer != IntPtr.Zero)
                 {
                     Marshal.FreeHGlobal(_buffer);
@@ -159,7 +262,7 @@ namespace StreamA.Desktop
         #endregion
 
         #region -- incapsulate camera frame windows --
-        public class OpenCVSharp4FrameSender: IFrameSender
+        /*public class OpenCVSharp4FrameSender: IFrameSender
         {
             public bool IsOpened => _capture?.IsOpened() == true;
             public event Action<string>? StatusChanged; // Для UI-индикации
@@ -315,7 +418,7 @@ namespace StreamA.Desktop
                 }
             }
             #endregion
-        }
+        }*/
         #endregion
     }
 }
