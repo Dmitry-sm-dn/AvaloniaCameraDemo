@@ -6,8 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace StreamA.Desktop
 {
@@ -38,8 +38,10 @@ namespace StreamA.Desktop
                 return new LibVlcSharpFrameSenderLinux(SendFrame, "/dev/video0", 640, 480);//linux
             if (OperatingSystem.IsWindows())
             {
-                var cameraName = LibVlcSharpFrameSenderWindows.GetVideoDeviceNames().FirstOrDefault() ?? "";
-                return new LibVlcSharpFrameSenderWindows(SendFrame, cameraName, 640, 480);//windows
+                var cameraModes = LibVlcSharpFrameSenderWindows.GetCameraModes().FirstOrDefault();
+                var cameraName = cameraModes.Name ?? "";
+                var resolution = cameraModes.Resolutions.OrderByDescending(r=>r.Width*r.Height).FirstOrDefault(r=> r.Width * r.Height <= 1920*1080);
+                return new LibVlcSharpFrameSenderWindows(SendFrame, cameraName, (uint)resolution.Width, (uint)resolution.Height);//windows
             }
 
             throw new PlatformNotSupportedException();
@@ -144,78 +146,65 @@ namespace StreamA.Desktop
                 );
 
                 _mediaPlayer.Play();
+                StatusChanged?.Invoke($"Camera started => Name: {_deviceName}, backend API: {media.Mrl}, Resolution: {_width}x{_height}");
             }
 
             public void Stop()
             {
                 _mediaPlayer?.Stop();
                 _mediaPlayer?.Dispose();
+                StatusChanged?.Invoke($"Camera stoped");
             }
 
             #region -- direct show information from camera for windows --
-            public static List<string> GetVideoDeviceNames()
-            {
-                var devices = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice);
-                return devices.Select(d => d.Name).ToList();
-            }
             public static List<(string Name, List<(int Width, int Height)> Resolutions)> GetCameraModes()
             {
-                var result = new List<(string, List<(int, int)>)>();
-                var devices = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice);
+                var results = new List<(string Name, List<(int Width, int Height)> Resolutions)>();
 
-                foreach (var device in devices)
+                foreach (var device in DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice))
                 {
-                    var capsList = new List<(int, int)>();
-                    IAMStreamConfig? config = null;
+                    var resolutions = new List<(int, int)>();
 
                     try
                     {
-                        var graph = (IGraphBuilder)new FilterGraph();
-                        if (typeof(DsDevice).GetField("CLSID_CaptureGraphBuilder2", BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null) is Guid captureGraphBuilder)
-                            if (Type.GetTypeFromCLSID(captureGraphBuilder) is Type captureGraphBuilderType)
-                            {
-                                var capFilter = (IBaseFilter?)Activator.CreateInstance(captureGraphBuilderType);
-                                graph.AddFilter(capFilter, "Capture Filter");
+                        // Создаем Filter Graph
+                        var graph = (IFilterGraph2)new FilterGraph();
 
-                                var moniker = device.Mon;
-                                Guid guidBaseFilter = typeof(IBaseFilter).GUID;
-                                moniker.BindToObject(null, null, ref guidBaseFilter, out object objFilter);
-                                var baseFilter = (IBaseFilter)objFilter;
+                        // Создаем Capture Graph Builder
+                        var captureGraph = (ICaptureGraphBuilder2)new CaptureGraphBuilder2();
+                        captureGraph.SetFiltergraph(graph);
 
-                                graph.AddFilter(baseFilter, "Video Capture");
-                                var captureGraph = (ICaptureGraphBuilder2)new CaptureGraphBuilder2();
-                                captureGraph.SetFiltergraph(graph);
-                                captureGraph.FindInterface(PinCategory.Capture, DirectShowLib.MediaType.Video, baseFilter, typeof(IAMStreamConfig).GUID, out object obj);
+                        // Получаем IBaseFilter устройства
+                        Guid guidBaseFilter = typeof(IBaseFilter).GUID;
+                        device.Mon.BindToObject(null!, null, ref guidBaseFilter, out object sourceObj);
+                        var sourceFilter = (IBaseFilter)sourceObj;
+                        graph.AddFilter(sourceFilter, "Video Capture");
 
-                                config = obj as IAMStreamConfig;
+                        // Получаем интерфейс настройки форматов
+                        captureGraph.FindInterface(PinCategory.Capture, DirectShowLib.MediaType.Video, sourceFilter, typeof(IAMStreamConfig).GUID, out object configObj);
+                        var config = (IAMStreamConfig)configObj;
 
-                                if (config != null)
-                                {
-                                    config.GetNumberOfCapabilities(out int count, out int size);
-                                    var ptr = Marshal.AllocCoTaskMem(size);
-                                    for (int i = 0; i < count; i++)
-                                    {
-                                        config.GetStreamCaps(i, out AMMediaType media, ptr);
-                                        var v = (VideoInfoHeader)Marshal.PtrToStructure(media.formatPtr, typeof(VideoInfoHeader))!;
-                                        capsList.Add((v.BmiHeader.Width, v.BmiHeader.Height));
-                                        DsUtils.FreeAMMediaType(media);
-                                    }
-                                    Marshal.FreeCoTaskMem(ptr);
-                                }
-                            }
+                        config.GetNumberOfCapabilities(out int count, out int size);
+                        var taskMemPointer = Marshal.AllocCoTaskMem(size);
 
-                        result.Add((device.Name, capsList));
+                        for (int i = 0; i < count; i++)
+                        {
+                            config.GetStreamCaps(i, out AMMediaType mediaType, taskMemPointer);
+                            var header = Marshal.PtrToStructure<VideoInfoHeader>(mediaType.formatPtr);
+                            resolutions.Add((header?.BmiHeader.Width??0, header?.BmiHeader.Height??0));
+                            DsUtils.FreeAMMediaType(mediaType);
+                        }
+
+                        Marshal.FreeCoTaskMem(taskMemPointer);
+                        results.Add((device.Name, resolutions.Where(r=>r.Item1 > 0 && r.Item2 > 0).ToList()));
                     }
                     catch
                     {
-                        result.Add((device.Name, new()));
-                    }
-                    finally
-                    {
-                        if (config is not null and IDisposable d) d.Dispose();
+                        results.Add((device.Name, new()));
                     }
                 }
-                return result;
+
+                return results;
             }
             #endregion
         }
