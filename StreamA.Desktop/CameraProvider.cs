@@ -7,7 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
+using System.IO;
+using System.Text;
 
 namespace StreamA.Desktop
 {
@@ -92,7 +93,7 @@ namespace StreamA.Desktop
             }
         }
 
-        #region -- --
+        #region -- incapsulate camera frame windows  --
         public sealed class LibVlcSharpFrameSenderWindows : IFrameSender
         {
             public bool IsOpened => _mediaPlayer?.State == VLCState.Playing;
@@ -222,8 +223,6 @@ namespace StreamA.Desktop
             private readonly Action<byte[]> _onFrame;
             public LibVlcSharpFrameSenderLinux(Action<byte[]> onFrame, string devicePath, uint width, uint height)
             {
-                Core.Initialize();
-
                 _onFrame = onFrame;
                 _devicePath = devicePath;
                 _width = width;
@@ -232,10 +231,10 @@ namespace StreamA.Desktop
 
             public void Start()
             {
-                var libVlc = new LibVLC();
+                var libVlc = new LibVLC(enableDebugLogs:true);
                 using var media = new Media(libVlc, $"v4l2://{_devicePath}", FromType.FromLocation);
                 
-                _mediaPlayer = new MediaPlayer(media);
+                _mediaPlayer = new MediaPlayer(media) { EnableHardwareDecoding = true };
                 _mediaPlayer.SetVideoFormat("RV32", _width, _height, _width * 4);
 
                 SKBitmap? skBitmap = null;
