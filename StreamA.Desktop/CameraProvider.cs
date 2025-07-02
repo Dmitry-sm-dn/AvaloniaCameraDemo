@@ -1,4 +1,5 @@
 ﻿using DirectShowLib;
+using DynamicData;
 using LibVLCSharp.Shared;
 using SkiaSharp;
 using StreamA.Services;
@@ -34,12 +35,12 @@ namespace StreamA.Desktop
 
         private IFrameSender FabricaCameraSender()
         {
-            (string? Name, int Width, int Height) CameraParam(List<(string Name, List<(int Width, int Height)> Resolutions)> modes)
+            (string? Name, int Width, int Height) CameraParam(List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)> devices)
             {
-                var mode = modes.FirstOrDefault() != default ? modes.FirstOrDefault()
-                    : (Name: null, Resolutions: [(Width: 640, Height: 480)]);
-                var resolution = mode.Resolutions.OrderByDescending(r => r.Width * r.Height).FirstOrDefault(r => r.Width * r.Height <= 1920 * 1080);
-                return (mode.Name, resolution.Width, resolution.Height);
+                var device = devices.FirstOrDefault() != default ? devices.FirstOrDefault()
+                    : (Name: null, Modes: [(Format: null, Resolutions: [(Width: 640, Height: 480)])]);
+                var resolution = device.Modes.First().Resolutions.OrderByDescending(r => r.Width * r.Height).FirstOrDefault(r => r.Width * r.Height <= 1920 * 1080);
+                return (device.Name, resolution.Width, resolution.Height);
             };
             
             if (OperatingSystem.IsLinux())
@@ -166,13 +167,13 @@ namespace StreamA.Desktop
             }
 
             #region -- direct show information from camera for windows --
-            public static List<(string Name, List<(int Width, int Height)> Resolutions)> GetCameraModes()
+            public static List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)> GetCameraModes()
             {
-                var results = new List<(string Name, List<(int Width, int Height)> Resolutions)>();
+                var results = new List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)>();
 
                 foreach (var device in DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice))
                 {
-                    var resolutions = new List<(int, int)>();
+                    var resolutions = new List<(int W, int H)>();
 
                     try
                     {
@@ -205,7 +206,7 @@ namespace StreamA.Desktop
                         }
 
                         Marshal.FreeCoTaskMem(taskMemPointer);
-                        results.Add((device.Name, resolutions.Where(r => r.Item1 > 0 && r.Item2 > 0).ToList()));
+                        results.Add( (Name: device.Name, Modes: [(Format: null, Resolutions: resolutions?.Where(r => r.W > 0 && r.H > 0).ToList())]) );
                     }
                     catch
                     {
