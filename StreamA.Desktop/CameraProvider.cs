@@ -4,11 +4,12 @@ using SkiaSharp;
 using StreamA.Services;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using System.Text;
 
 namespace StreamA.Desktop
 {
@@ -206,7 +207,7 @@ namespace StreamA.Desktop
                         }
 
                         Marshal.FreeCoTaskMem(taskMemPointer);
-                        results.Add( (Name: device.Name, Modes: [(Format: null, Resolutions: resolutions?.Where(r => r.W > 0 && r.H > 0).ToList())]) );
+                        results.Add( (Name: device.Name, Modes: [(Format: null, Resolutions: resolutions?.Where(r => r.W > 0 && r.H > 0).ToList())!]) );
                     }
                     catch
                     {
@@ -279,146 +280,56 @@ namespace StreamA.Desktop
             #region -- v4l2 information from camera for linux --
             public static class V4L2CameraHelper
             {
+                #region -- public methods --
                 public static List<(string Device, List<(string Format, List<(int W, int H)> Sizes)>)> GetCameraModes()
                 {
                     var result = new List<(string, List<(string, List<(int, int)>)>)>();
 
                     foreach (var device in Directory.GetFiles("/dev", "video*").OrderBy(x => x))
                     {
-                        int fd = open(device, O_RDWR);
+                        int fd = LibC.open(device, LibC.O_RDWR);
                         if (fd < 0) continue;
 
-                        var formats = EnumeratePixelFormats(fd);
+                        var cap = new LibC.v4l2_capability();
+                        if (LibC.ioctl(fd, LibC.VIDIOC_QUERYCAP, ref cap) != 0) continue;//to do=>Marshal.GetLastWin32Error();
+                        Console.WriteLine("Driver: " + Encoding.ASCII.GetString(cap.driver));
+
+                        var fourCCodes = EnumeratePixelFormats(fd);
                         var deviceInfo = new List<(string, List<(int, int)>)>();
 
-                        foreach (var format in formats)
+                        foreach (var fourCCode in fourCCodes)
                         {
-                            var fourcc = FourCC(format);
-                            var sizes = GetResolutions(fd, format);
+                            //FourCC расшифровывается как Four-Character Code — это 4-байтовый (32-битный) идентификатор медиа-формата
+                            var fourCC = Encoding.ASCII.GetString(BitConverter.GetBytes(fourCCode));
+                            var sizes = GetResolutions(fd, fourCCode);
                             if (sizes.Count > 0)
-                                deviceInfo.Add((fourcc, sizes));
+                                deviceInfo.Add((fourCC, sizes));
                         }
 
-                        close(fd);
+                        LibC.close(fd);
                         if (deviceInfo.Count > 0)
                             result.Add((device, deviceInfo));
                     }
 
                     return result;
                 }
+                #endregion
 
-                //=================================================
-
-                private const int O_RDWR = 2;
-                private const uint VIDIOC_ENUM_FMT = 0xC0405602;
-                private const uint VIDIOC_ENUM_FRAMESIZES = 0xC02C560A;
-
-                [DllImport("libc", SetLastError = true)]
-                private static extern int open(string pathname, int flags);
-
-                [DllImport("libc", SetLastError = true)]
-                private static extern int close(int fd);
-
-                [DllImport("libc", SetLastError = true)]
-                private static extern int ioctl(int fd, uint request, ref v4l2_frmsizeenum data);
-                [DllImport("libc", SetLastError = true)]
-                private static extern int ioctl(int fd, uint request, ref v4l2_fmtdesc data);
-
-                [StructLayout(LayoutKind.Sequential)]
-                public struct v4l2_frmsize_discrete
-                {
-                    public uint width;
-                    public uint height;
-                }
-                [StructLayout(LayoutKind.Sequential)]
-                public struct v4l2_frmsize_stepwise
-                {
-                    public uint min_width;
-                    public uint max_width;
-                    public uint step_width;
-                    public uint min_height;
-                    public uint max_height;
-                    public uint step_height;
-                }
-                [StructLayout(LayoutKind.Explicit)]
-                public struct v4l2_frmsizeenum
-                {
-                    [FieldOffset(0)] public uint index;
-                    [FieldOffset(4)] public uint pixel_format;
-                    [FieldOffset(8)] public uint type;
-                    [FieldOffset(12)] public v4l2_frmsize_discrete discrete;
-                    [FieldOffset(12)] public v4l2_frmsize_stepwise stepwise;
-                    [FieldOffset(36)] public uint reserved0;
-                    [FieldOffset(40)] public uint reserved1;
-                }
-
-                private static List<(int Width, int Height)> GetResolutions(int fd, uint format)
-                {
-                    var resolutions = new List<(int, int)>();
-                    for (uint i = 0; i < 20; i++)
-                    {
-                        var frmsize = new v4l2_frmsizeenum
-                        {
-                            index = i,
-                            pixel_format = format,
-                            reserved0 = 0,
-                            reserved1 = 0
-                        };
-
-                        int result = ioctl(fd, VIDIOC_ENUM_FRAMESIZES, ref frmsize);
-                        if (result != 0)
-                        {
-                            int errno = Marshal.GetLastWin32Error();
-                            if (errno == 22) break; // EINVAL — конец перебора
-                            Console.WriteLine($"ioctl error (FRAMESIZES): {errno}");
-                            break;
-                        }
-
-                        if (frmsize.type == 1)
-                        {
-                            resolutions.Add(((int)frmsize.discrete.width, (int)frmsize.discrete.height));
-                        }
-                        else if (frmsize.type == 2 || frmsize.type == 3)
-                        {
-                            // stepwise/continuous: ты можешь добавить расширенную логику, но пока просто выведем диапазон
-                            Console.WriteLine($"→ Stepwise: {frmsize.stepwise.min_width}x{frmsize.stepwise.min_height}..{frmsize.stepwise.max_width}x{frmsize.stepwise.max_height}");
-                            break;
-                        }
-                    }
-
-                    return resolutions;
-                }
-
-                //======================================================
-                private const uint V4L2_BUF_TYPE_VIDEO_CAPTURE = 1;
-
-                [StructLayout(LayoutKind.Sequential)]
-                private struct v4l2_fmtdesc
-                {
-                    public uint index;
-                    public uint type; // V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
-                    public uint flags;
-                    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
-                    public byte[] description;
-                    public uint pixelformat;
-                    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-                    public uint[] reserved;
-                }
-
+                #region -- private implementation --
                 private static List<uint> EnumeratePixelFormats(int fd)
                 {
                     var formats = new List<uint>();
-                    var fmt = new v4l2_fmtdesc
+                    var fmt = new LibC.v4l2_fmtdesc
                     {
-                        type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                        type = LibC.V4L2_BUF_TYPE_VIDEO_CAPTURE,
                         description = new byte[32],
                         reserved = new uint[4]
                     };
 
-                    for (uint i = 0; i < 20; i++)
+                    for (uint i = 0; ; i++)
                     {
                         fmt.index = i;
-                        if (ioctl(fd, VIDIOC_ENUM_FMT, ref fmt) != 0)
+                        if (LibC.ioctl(fd, LibC.VIDIOC_ENUM_FMT, ref fmt) != 0)
                             break;
 
                         formats.Add(fmt.pixelformat);
@@ -426,11 +337,171 @@ namespace StreamA.Desktop
 
                     return formats;
                 }
-                private static string FourCC(uint format)
+
+                private static List<(int Width, int Height)> GetResolutions(int fd, uint format)
                 {
-                    var bytes = BitConverter.GetBytes(format);
-                    return System.Text.Encoding.ASCII.GetString(bytes);
+                    var resolutions = new List<(int, int)>();
+                    for (uint i = 0; i < 20; i++)
+                    {
+                        var frmsize = new LibC.v4l2_frmsizeenum
+                        {
+                            index = i,
+                            pixel_format = format,
+                            reserved0 = 0,
+                            reserved1 = 0
+                        };
+
+                        int result = LibC.ioctl(fd, LibC.VIDIOC_ENUM_FRAMESIZES, ref frmsize);
+                        if (result != 0)
+                        {
+                            int errNo = Marshal.GetLastWin32Error();
+                            string message = new Win32Exception(errNo).Message;
+                            Console.WriteLine($"ioctl ErrNo:{errNo}; Message: {message}");
+                            break;
+                        }
+
+                        if (frmsize.type == LibC.V4L2_FRMSIZE_TYPE_DISCRETE)
+                            resolutions.Add(((int)frmsize.discrete.width, (int)frmsize.discrete.height));
+                        else if (frmsize.type == LibC.V4L2_FRMSIZE_TYPE_CONTINUOUS || frmsize.type == LibC.V4L2_FRMSIZE_TYPE_STEPWISE)
+                        {
+                            Console.WriteLine($"→ Stepwise: {frmsize.stepwise.min_width}x{frmsize.stepwise.min_height}..{frmsize.stepwise.max_width}x{frmsize.stepwise.max_height}");
+                            break;
+                        }
+                    }
+
+                    return resolutions;
                 }
+                #endregion
+
+                #region -- Error constants --
+                //https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-
+                public static class Win32Error
+                {
+                    public const int ERROR_BAD_COMMAND  = 22;//The device does not recognize the command.
+                    public const int ERROR_BAD_LENGTH   = 24;//The program issued a command but the command length is incorrect.
+                    public const int ERROR_SEEK         = 25;//The drive cannot locate a specific area or track on the disk.
+                }
+                #endregion
+
+                #region -- Video for Linux API --
+                //https://docs.huihoo.com/doxygen/linux/kernel/3.7/uapi_2linux_2videodev2_8h_source.html
+                public static class LibC
+                {
+                    public const int O_RDWR = 2;
+                    public const uint VIDIOC_ENUM_FMT = 0xC0405602;
+                    public const uint VIDIOC_ENUM_FRAMESIZES = 0xC02C564A;
+                    public const uint VIDIOC_QUERYCAP = 0x80685600;
+                    public const uint VIDIOC_G_FMT = 0xc0cc5604;
+
+                    public const uint V4L2_BUF_TYPE_VIDEO_CAPTURE   = 1;
+                    public const uint V4L2_FRMSIZE_TYPE_DISCRETE    = 1;
+                    public const uint V4L2_FRMSIZE_TYPE_CONTINUOUS  = 2;
+                    public const uint V4L2_FRMSIZE_TYPE_STEPWISE    = 3;
+
+                    [DllImport("libc", SetLastError = true)]
+                    public static extern int open(string pathname, int flags);
+
+                    [DllImport("libc", SetLastError = true)]
+                    public static extern int close(int fd);
+
+                    [DllImport("libc", SetLastError = true)]
+                    public static extern int ioctl(int fd, uint request, ref v4l2_capability arg);
+
+                    [DllImport("libc", SetLastError = true)]
+                    public static extern int ioctl(int fd, uint request, ref v4l2_format arg);
+
+                    [DllImport("libc", SetLastError = true)]
+                    public static extern int ioctl(int fd, uint request, ref v4l2_frmsizeenum arg);
+
+                    [DllImport("libc", SetLastError = true)]
+                    public static extern int ioctl(int fd, uint request, ref v4l2_fmtdesc data);
+
+                    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+                    public struct v4l2_capability
+                    {
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+                        public byte[] driver;
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+                        public byte[] card;
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+                        public byte[] bus_info;
+                        public uint version;
+                        public uint capabilities;
+                        public uint device_caps;
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+                        public uint[] reserved;
+                    }
+
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_fmtdesc
+                    {
+                        public uint index;
+                        public uint type; // V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
+                        public uint flags;
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+                        public byte[] description;
+                        public uint pixelformat;
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+                        public uint[] reserved;
+                    }
+
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_frmsize_discrete
+                    {
+                        public uint width;
+                        public uint height;
+                    }
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_frmsize_stepwise
+                    {
+                        public uint min_width;
+                        public uint max_width;
+                        public uint step_width;
+                        public uint min_height;
+                        public uint max_height;
+                        public uint step_height;
+                    }
+                    [StructLayout(LayoutKind.Explicit)]
+                    public struct v4l2_frmsizeenum//44
+                    {
+                        [FieldOffset(0)] public uint index;
+                        [FieldOffset(4)] public uint pixel_format;
+                        [FieldOffset(8)] public uint type;
+                        //union
+                        [FieldOffset(12)] public v4l2_frmsize_discrete discrete;//8
+                        [FieldOffset(12)] public v4l2_frmsize_stepwise stepwise;//24
+                        //
+                        [FieldOffset(36)] public uint reserved0;
+                        [FieldOffset(40)] public uint reserved1;
+                    }
+
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_pix_format
+                    {
+                        public uint width;
+                        public uint height;
+                        public uint pixelformat;
+                        public uint field;
+                        public uint bytesperline;
+                        public uint sizeimage;
+                        public uint colorspace;
+                        public uint priv;
+                        //not document extension
+                        public uint flags;
+                        public uint xfer_func;
+                        public uint ycbcr_enc;
+                        public uint quantization;
+                    }
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_format
+                    {
+                        public uint type;
+                        public v4l2_pix_format fmt;//12*4=48
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 152)]//200-48
+                        public byte[] reserved;
+                    }
+                }
+                #endregion
             }
             #endregion
         }
