@@ -1,5 +1,4 @@
 ﻿using DirectShowLib;
-using DynamicData;
 using LibVLCSharp.Shared;
 using SkiaSharp;
 using StreamA.Services;
@@ -9,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace StreamA.Desktop
 {
@@ -433,6 +433,100 @@ namespace StreamA.Desktop
                 }
             }
             #endregion
+        }
+        #endregion
+
+        #region -- AVFoundation через P/Invoke в macOS --
+        public static class AVFoundationCameraEnumerator
+        {
+            private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
+
+            [DllImport(OBJC_LIB)]
+            private static extern IntPtr objc_getClass(string className);
+
+            [DllImport(OBJC_LIB)]
+            private static extern IntPtr sel_registerName(string selectorName);
+
+            [DllImport(OBJC_LIB)]
+            private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+            [DllImport(OBJC_LIB)]
+            private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr mediaType);
+
+            public class MacCameraInfo
+            {
+                public string? Name { get; set; }
+                public string? UniqueID { get; set; }
+            }
+
+            public static IEnumerable<MacCameraInfo> GetVideoDevices()
+            {
+                var devices = new List<MacCameraInfo>();
+
+                IntPtr avCaptureDeviceClass = objc_getClass("AVCaptureDevice");
+                IntPtr selDevicesWithMediaType = sel_registerName("devicesWithMediaType:");
+                IntPtr selLocalizedName = sel_registerName("localizedName");
+                IntPtr selUniqueID = sel_registerName("uniqueID");
+
+                IntPtr mediaType = NSString.AVMediaTypeVideo();//.Create("vide"); // "vide" → AVMediaTypeVideo
+
+                IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
+                int count = NSArray.GetCount(devicesArray);
+
+                for (int i = 0; i < count; i++)
+                {
+                    IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
+                    string name = NSString.FromNSObject(objc_msgSend(device, selLocalizedName));
+                    string uid = NSString.FromNSObject(objc_msgSend(device, selUniqueID));
+
+                    devices.Add(new MacCameraInfo { Name = name, UniqueID = uid });
+                }
+
+                return devices;
+            }
+
+            public static class NSArray
+            {
+                [DllImport("/System/Library/Frameworks/Foundation.framework/Foundation")]
+                public static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
+
+                public static int GetCount(IntPtr nsArray)
+                {
+                    IntPtr selCount = sel_registerName("count");
+                    return (int)objc_msgSend_ulong(nsArray, selCount);
+                }
+
+                public static IntPtr GetObjectAtIndex(IntPtr nsArray, int index)
+                {
+                    IntPtr selObjectAtIndex = sel_registerName("objectAtIndex:");
+                    return objc_msgSend(nsArray, selObjectAtIndex, (IntPtr)index);
+                }
+            }
+
+            public static class NSString
+            {
+                private const string AVF_LIB = "/System/Library/Frameworks/Foundation.framework/Foundation";
+
+                [DllImport(AVF_LIB)]
+                public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+                //[DllImport(AVF_LIB)]
+                //public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string str);
+                [DllImport(AVF_LIB)]
+                public static extern IntPtr AVMediaTypeVideo();
+
+                //public static IntPtr Create(string str)
+                //{
+                //    IntPtr nsStringClass = objc_getClass("NSString");
+                //    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
+                //    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
+                //}
+
+                public static string FromNSObject(IntPtr nsString)
+                {
+                    IntPtr selUTF8String = sel_registerName("UTF8String");
+                    IntPtr cStrPtr = objc_msgSend(nsString, selUTF8String);
+                    return Marshal.PtrToStringUTF8(cStrPtr);
+                }
+            }
         }
         #endregion
     }
