@@ -294,14 +294,10 @@ namespace StreamA.Desktop
                         if (LibC.ioctl(fd, LibC.VIDIOC_QUERYCAP, ref cap) != 0) continue;//to do=>Marshal.GetLastWin32Error();
                         Console.WriteLine("Driver: " + Encoding.ASCII.GetString(cap.driver));
 
-                        var v4l2format = new LibC.v4l2_format { type = LibC.V4L2_BUF_TYPE_VIDEO_CAPTURE };
-                        if (LibC.ioctl(fd, LibC.VIDIOC_G_FMT, ref v4l2format) != 0) continue;//to do=>Marshal.GetLastWin32Error();
-                        Console.WriteLine($"Format: {v4l2format.fmt.width}x{v4l2format.fmt.height}, PixFmt: 0x{v4l2format.fmt.pixelformat:X}");
-
                         var fourCCodes = EnumeratePixelFormats(fd);
                         var deviceInfo = new List<(string, List<(int, int)>)>();
 
-                        foreach (var fourCCode in fourCCodes.Where(fc=>fc == v4l2format.fmt.pixelformat))
+                        foreach (var fourCCode in fourCCodes)
                         {
                             //FourCC расшифровывается как Four-Character Code — это 4-байтовый (32-битный) идентификатор медиа-формата
                             var fourCC = Encoding.ASCII.GetString(BitConverter.GetBytes(fourCCode));
@@ -426,14 +422,57 @@ namespace StreamA.Desktop
                         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
                         public byte[] driver;
                         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
-                        public byte card;
+                        public byte[] card;
                         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
-                        public byte bus_info;
+                        public byte[] bus_info;
                         public uint version;
                         public uint capabilities;
                         public uint device_caps;
                         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
                         public uint[] reserved;
+                    }
+
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_fmtdesc
+                    {
+                        public uint index;
+                        public uint type; // V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
+                        public uint flags;
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+                        public byte[] description;
+                        public uint pixelformat;
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+                        public uint[] reserved;
+                    }
+
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_frmsize_discrete
+                    {
+                        public uint width;
+                        public uint height;
+                    }
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct v4l2_frmsize_stepwise
+                    {
+                        public uint min_width;
+                        public uint max_width;
+                        public uint step_width;
+                        public uint min_height;
+                        public uint max_height;
+                        public uint step_height;
+                    }
+                    [StructLayout(LayoutKind.Explicit)]
+                    public struct v4l2_frmsizeenum//44
+                    {
+                        [FieldOffset(0)] public uint index;
+                        [FieldOffset(4)] public uint pixel_format;
+                        [FieldOffset(8)] public uint type;
+                        //union
+                        [FieldOffset(12)] public v4l2_frmsize_discrete discrete;//8
+                        [FieldOffset(12)] public v4l2_frmsize_stepwise stepwise;//24
+                        //
+                        [FieldOffset(36)] public uint reserved0;
+                        [FieldOffset(40)] public uint reserved1;
                     }
 
                     [StructLayout(LayoutKind.Sequential)]
@@ -457,50 +496,9 @@ namespace StreamA.Desktop
                     public struct v4l2_format
                     {
                         public uint type;
-                        public v4l2_pix_format fmt;
-                    }
-
-                    [StructLayout(LayoutKind.Sequential)]
-                    public struct v4l2_frmsize_discrete
-                    {
-                        public uint width;
-                        public uint height;
-                    }
-                    [StructLayout(LayoutKind.Sequential)]
-                    public struct v4l2_frmsize_stepwise
-                    {
-                        public uint min_width;
-                        public uint max_width;
-                        public uint step_width;
-                        public uint min_height;
-                        public uint max_height;
-                        public uint step_height;
-                    }
-                    [StructLayout(LayoutKind.Explicit)]
-                    public struct v4l2_frmsizeenum
-                    {
-                        [FieldOffset(0)] public uint index;
-                        [FieldOffset(4)] public uint pixel_format;
-                        [FieldOffset(8)] public uint type;
-                        //union
-                        [FieldOffset(12)] public v4l2_frmsize_discrete discrete;
-                        [FieldOffset(12)] public v4l2_frmsize_stepwise stepwise;
-                        //
-                        [FieldOffset(36)] public uint reserved0;
-                        [FieldOffset(40)] public uint reserved1;
-                    }
-
-                    [StructLayout(LayoutKind.Sequential)]
-                    public struct v4l2_fmtdesc
-                    {
-                        public uint index;
-                        public uint type; // V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
-                        public uint flags;
-                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
-                        public byte[] description;
-                        public uint pixelformat;
-                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-                        public uint[] reserved;
+                        public v4l2_pix_format fmt;//12*4=48
+                        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 152)]//200-48
+                        public byte[] reserved;
                     }
                 }
                 #endregion
