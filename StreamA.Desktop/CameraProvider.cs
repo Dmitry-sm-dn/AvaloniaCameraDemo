@@ -612,7 +612,7 @@ namespace StreamA.Desktop
                     IntPtr selLocalizedName = sel_registerName("localizedName");
                     IntPtr selUniqueID = sel_registerName("uniqueID");
 
-                    IntPtr mediaType = NSString.AVMediaTypeVideo();//.Create("vide"); // "vide" → AVMediaTypeVideo
+                    IntPtr mediaType = GetAVMediaTypeVideo();//.Create("vide"); // "vide" → AVMediaTypeVideo
 
                     IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
                     int count = NSArray.GetCount(devicesArray);
@@ -627,6 +627,19 @@ namespace StreamA.Desktop
                     }
 
                     return devices;
+                }
+
+                public static IntPtr GetAVMediaTypeVideo()
+                {
+                    // Класс AVMediaTypeVideo хранится в Objective-C как NSString переменная, которая возвращается методом
+                    IntPtr mediaTypeClass = objc_getClass("AVMediaTypeVideo");
+                    if (mediaTypeClass != IntPtr.Zero)
+                        return mediaTypeClass;
+
+                    // Альтернатива через AVFoundation класс:
+                    IntPtr avClass = objc_getClass("AVFoundation");
+                    IntPtr selAVMediaTypeVideo = sel_registerName("AVMediaTypeVideo");
+                    return objc_msgSend(avClass, selAVMediaTypeVideo);
                 }
 
                 public static class NSArray
@@ -655,8 +668,8 @@ namespace StreamA.Desktop
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
                     //[DllImport(AVF_LIB)]
                     //public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string str);
-                    [DllImport(AVF_LIB)]
-                    public static extern IntPtr AVMediaTypeVideo();
+                    //[DllImport(AVF_LIB)]
+                    //public static extern IntPtr AVMediaTypeVideo();
 
                     //public static IntPtr Create(string str)
                     //{
