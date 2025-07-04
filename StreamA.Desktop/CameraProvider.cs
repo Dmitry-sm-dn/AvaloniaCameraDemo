@@ -1,5 +1,4 @@
 ﻿using DirectShowLib;
-using DynamicData;
 using LibVLCSharp.Shared;
 using SkiaSharp;
 using StreamA.Services;
@@ -11,7 +10,6 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
-using static StreamA.Desktop.CameraProvider.LibVlcSharpFrameSenderLinux.V4L2CameraHelper;
 
 namespace StreamA.Desktop
 {
@@ -54,12 +52,12 @@ namespace StreamA.Desktop
             if (OperatingSystem.IsLinux())
             {
                 var cameraParam = CameraParam(LibVlcSharpFrameSenderLinux.V4L2CameraHelper.GetCameraModes());
-                return new LibVlcSharpFrameSenderLinux(SendFrame, cameraParam.Name ?? "/dev/video0"/*to do=>/dev*/, (uint)cameraParam.Width, (uint)cameraParam.Height);
+                return new LibVlcSharpFrameSenderLinux(SendFrame, cameraParam.Name ?? "dev/video0"/*to do=>/dev*/, (uint)cameraParam.Width, (uint)cameraParam.Height);
             }
             if (OperatingSystem.IsMacOS())
             {
                 var cameraParam = CameraParam(LibVlcSharpFrameSenderMacOS.AVFoundationCameraHelper.GetCameraModes());
-                return new LibVlcSharpFrameSenderMacOS(SendFrame, cameraParam.Name ?? "avcapture://0x810000046d0825", (uint)cameraParam.Width, (uint)cameraParam.Height);
+                return new LibVlcSharpFrameSenderMacOS(SendFrame, cameraParam.Name ?? "0x810000046d0825", (uint)cameraParam.Width, (uint)cameraParam.Height);
             }
 
             throw new PlatformNotSupportedException();
