@@ -1,4 +1,5 @@
 ﻿using DirectShowLib;
+using DynamicData;
 using LibVLCSharp.Shared;
 using SkiaSharp;
 using StreamA.Services;
@@ -10,6 +11,7 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using static StreamA.Desktop.CameraProvider.LibVlcSharpFrameSenderLinux.V4L2CameraHelper;
 
 namespace StreamA.Desktop
 {
@@ -36,23 +38,28 @@ namespace StreamA.Desktop
 
         private IFrameSender FabricaCameraSender()
         {
-            (string? Name, int Width, int Height) CameraParam(List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)> devices)
+            static (string? Name, int Width, int Height) CameraParam(List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)> devices)
             {
                 var device = devices.FirstOrDefault() != default ? devices.FirstOrDefault()
                     : (Name: null, Modes: [(Format: null, Resolutions: [(Width: 640, Height: 480)])]);
                 var resolution = device.Modes.First().Resolutions.OrderByDescending(r => r.Width * r.Height).FirstOrDefault(r => r.Width * r.Height <= 1920 * 1080);
                 return (device.Name, resolution.Width, resolution.Height);
             };
-            
+
+            if (OperatingSystem.IsWindows())
+            {
+                var cameraParam = CameraParam(LibVlcSharpFrameSenderWindows.DShowCameraHelper.GetCameraModes());
+                return new LibVlcSharpFrameSenderWindows(SendFrame, cameraParam.Name??"none", (uint)cameraParam.Width, (uint)cameraParam.Height);
+            }
             if (OperatingSystem.IsLinux())
             {
                 var cameraParam = CameraParam(LibVlcSharpFrameSenderLinux.V4L2CameraHelper.GetCameraModes());
-                return new LibVlcSharpFrameSenderLinux(SendFrame, cameraParam.Name?? "/dev/video0"/*to do=>/dev*/, (uint)cameraParam.Width, (uint)cameraParam.Height);//linux
+                return new LibVlcSharpFrameSenderLinux(SendFrame, cameraParam.Name ?? "/dev/video0"/*to do=>/dev*/, (uint)cameraParam.Width, (uint)cameraParam.Height);
             }
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsMacOS())
             {
-                var cameraParam = CameraParam(LibVlcSharpFrameSenderWindows.GetCameraModes());
-                return new LibVlcSharpFrameSenderWindows(SendFrame, cameraParam.Name??"none", (uint)cameraParam.Width, (uint)cameraParam.Height);//windows
+                var cameraParam = CameraParam(LibVlcSharpFrameSenderMacOS.AVFoundationCameraHelper.GetCameraModes());
+                return new LibVlcSharpFrameSenderMacOS(SendFrame, cameraParam.Name ?? "avcapture://0x810000046d0825", (uint)cameraParam.Width, (uint)cameraParam.Height);
             }
 
             throw new PlatformNotSupportedException();
@@ -168,54 +175,57 @@ namespace StreamA.Desktop
             }
 
             #region -- direct show information from camera for windows --
-            public static List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)> GetCameraModes()
+            public static class DShowCameraHelper
             {
-                var results = new List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)>();
-
-                foreach (var device in DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice))
+                public static List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)> GetCameraModes()
                 {
-                    var resolutions = new List<(int W, int H)>();
+                    var results = new List<(string Name, List<(string Format, List<(int Width, int Height)> Resolutions)> Modes)>();
 
-                    try
+                    foreach (var device in DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice))
                     {
-                        // Создаем Filter Graph
-                        var graph = (IFilterGraph2)new FilterGraph();
+                        var resolutions = new List<(int W, int H)>();
 
-                        // Создаем Capture Graph Builder
-                        var captureGraph = (ICaptureGraphBuilder2)new CaptureGraphBuilder2();
-                        captureGraph.SetFiltergraph(graph);
-
-                        // Получаем IBaseFilter устройства
-                        Guid guidBaseFilter = typeof(IBaseFilter).GUID;
-                        device.Mon.BindToObject(null!, null, ref guidBaseFilter, out object sourceObj);
-                        var sourceFilter = (IBaseFilter)sourceObj;
-                        graph.AddFilter(sourceFilter, "Video Capture");
-
-                        // Получаем интерфейс настройки форматов
-                        captureGraph.FindInterface(PinCategory.Capture, DirectShowLib.MediaType.Video, sourceFilter, typeof(IAMStreamConfig).GUID, out object configObj);
-                        var config = (IAMStreamConfig)configObj;
-
-                        config.GetNumberOfCapabilities(out int count, out int size);
-                        var taskMemPointer = Marshal.AllocCoTaskMem(size);
-
-                        for (int i = 0; i < count; i++)
+                        try
                         {
-                            config.GetStreamCaps(i, out AMMediaType mediaType, taskMemPointer);
-                            var header = Marshal.PtrToStructure<VideoInfoHeader>(mediaType.formatPtr);
-                            resolutions.Add((header?.BmiHeader.Width ?? 0, header?.BmiHeader.Height ?? 0));
-                            DsUtils.FreeAMMediaType(mediaType);
+                            // Создаем Filter Graph
+                            var graph = (IFilterGraph2)new FilterGraph();
+
+                            // Создаем Capture Graph Builder
+                            var captureGraph = (ICaptureGraphBuilder2)new CaptureGraphBuilder2();
+                            captureGraph.SetFiltergraph(graph);
+
+                            // Получаем IBaseFilter устройства
+                            Guid guidBaseFilter = typeof(IBaseFilter).GUID;
+                            device.Mon.BindToObject(null!, null, ref guidBaseFilter, out object sourceObj);
+                            var sourceFilter = (IBaseFilter)sourceObj;
+                            graph.AddFilter(sourceFilter, "Video Capture");
+
+                            // Получаем интерфейс настройки форматов
+                            captureGraph.FindInterface(PinCategory.Capture, DirectShowLib.MediaType.Video, sourceFilter, typeof(IAMStreamConfig).GUID, out object configObj);
+                            var config = (IAMStreamConfig)configObj;
+
+                            config.GetNumberOfCapabilities(out int count, out int size);
+                            var taskMemPointer = Marshal.AllocCoTaskMem(size);
+
+                            for (int i = 0; i < count; i++)
+                            {
+                                config.GetStreamCaps(i, out AMMediaType mediaType, taskMemPointer);
+                                var header = Marshal.PtrToStructure<VideoInfoHeader>(mediaType.formatPtr);
+                                resolutions.Add((header?.BmiHeader.Width ?? 0, header?.BmiHeader.Height ?? 0));
+                                DsUtils.FreeAMMediaType(mediaType);
+                            }
+
+                            Marshal.FreeCoTaskMem(taskMemPointer);
+                            results.Add((Name: device.Name, Modes: [(Format: null, Resolutions: resolutions?.Where(r => r.W > 0 && r.H > 0).ToList())!]));
                         }
+                        catch
+                        {
+                            results.Add((device.Name, new()));
+                        }
+                    }
 
-                        Marshal.FreeCoTaskMem(taskMemPointer);
-                        results.Add( (Name: device.Name, Modes: [(Format: null, Resolutions: resolutions?.Where(r => r.W > 0 && r.H > 0).ToList())!]) );
-                    }
-                    catch
-                    {
-                        results.Add((device.Name, new()));
-                    }
+                    return results;
                 }
-
-                return results;
             }
             #endregion
         }
@@ -228,13 +238,13 @@ namespace StreamA.Desktop
             public event Action<string>? StatusChanged; // Для UI-индикации
 
             private MediaPlayer? _mediaPlayer;
-            private readonly string _devicePath;
+            private readonly string _deviceUID;
             private readonly uint _width, _height;
             private readonly Action<byte[]> _onFrame;
-            public LibVlcSharpFrameSenderLinux(Action<byte[]> onFrame, string devicePath, uint width, uint height)
+            public LibVlcSharpFrameSenderLinux(Action<byte[]> onFrame, string deviceUID, uint width, uint height)
             {
                 _onFrame = onFrame;
-                _devicePath = devicePath;
+                _deviceUID = deviceUID;
                 _width = width;
                 _height = height;
             }
@@ -242,7 +252,7 @@ namespace StreamA.Desktop
             public void Start()
             {
                 var libVlc = new LibVLC(enableDebugLogs: true);
-                using var media = new Media(libVlc, $"v4l2://{_devicePath}", FromType.FromLocation);
+                using var media = new Media(libVlc, $"v4l2://{_deviceUID}", FromType.FromLocation);
 
                 _mediaPlayer = new MediaPlayer(media) { EnableHardwareDecoding = true };
                 _mediaPlayer.SetVideoFormat("RV32", _width, _height, _width * 4);
@@ -268,7 +278,7 @@ namespace StreamA.Desktop
                 );
 
                 _mediaPlayer.Play();
-                StatusChanged?.Invoke($"Camera started => Vendor name: {_devicePath}, backend API: {media.Mrl}, Resolution: {_width}x{_height}");
+                StatusChanged?.Invoke($"Camera started => Vendor uid: {_deviceUID}, backend API: {media.Mrl}, Resolution: {_width}x{_height}");
             }
 
             public void Stop()
@@ -507,97 +517,165 @@ namespace StreamA.Desktop
         }
         #endregion
 
-        #region -- AVFoundation через P/Invoke в macOS --
-        public static class AVFoundationCameraEnumerator
+        #region -- incapsulate camera frame macos --
+        public class LibVlcSharpFrameSenderMacOS : IFrameSender
         {
-            private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
+            public bool IsOpened => _mediaPlayer?.State == VLCState.Playing;
+            public event Action<string>? StatusChanged; // Для UI-индикации
 
-            [DllImport(OBJC_LIB)]
-            private static extern IntPtr objc_getClass(string className);
-
-            [DllImport(OBJC_LIB)]
-            private static extern IntPtr sel_registerName(string selectorName);
-
-            [DllImport(OBJC_LIB)]
-            private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
-            [DllImport(OBJC_LIB)]
-            private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr mediaType);
-
-            public class MacCameraInfo
+            private MediaPlayer? _mediaPlayer;
+            private readonly string _deviceUID;
+            private readonly uint _width, _height;
+            private readonly Action<byte[]> _onFrame;
+            public LibVlcSharpFrameSenderMacOS(Action<byte[]> onFrame, string deviceUID, uint width, uint height)
             {
-                public string? Name { get; set; }
-                public string? UniqueID { get; set; }
+                _onFrame = onFrame;
+                _deviceUID = deviceUID;
+                _width = width;
+                _height = height;
             }
 
-            public static IEnumerable<MacCameraInfo> GetVideoDevices()
+            public void Start()
             {
-                var devices = new List<MacCameraInfo>();
+                var libVlc = new LibVLC(enableDebugLogs: true);
+                using var media = new Media(libVlc, $"avcapture://{_deviceUID}", FromType.FromLocation);
 
-                IntPtr avCaptureDeviceClass = objc_getClass("AVCaptureDevice");
-                IntPtr selDevicesWithMediaType = sel_registerName("devicesWithMediaType:");
-                IntPtr selLocalizedName = sel_registerName("localizedName");
-                IntPtr selUniqueID = sel_registerName("uniqueID");
+                _mediaPlayer = new MediaPlayer(media) { EnableHardwareDecoding = true };
+                _mediaPlayer.SetVideoFormat("RV32", _width, _height, _width * 4);
 
-                IntPtr mediaType = NSString.AVMediaTypeVideo();//.Create("vide"); // "vide" → AVMediaTypeVideo
+                SKBitmap? skBitmap = null;
+                _mediaPlayer.SetVideoCallbacks(
+                    lockCb: (opaque, planes) =>
+                    {
+                        skBitmap = new SKBitmap(new SKImageInfo((int)_width, (int)_height, SKColorType.Bgra8888));
+                        Marshal.WriteIntPtr(planes, skBitmap.GetPixels());
+                        return IntPtr.Zero;
+                    },
+                    unlockCb: (opaque, picture, planes) => { },
+                    displayCb: (opaque, picture) =>
+                    {
+                        if (skBitmap?.Encode(SKEncodedImageFormat.Jpeg, 90) is SKData skData)
+                        {
+                            _onFrame(skData.ToArray()); // передаём кадр в обработку
+                            skData.Dispose();
+                        }
+                        skBitmap?.Dispose();
+                    }
+                );
 
-                IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
-                int count = NSArray.GetCount(devicesArray);
-
-                for (int i = 0; i < count; i++)
-                {
-                    IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
-                    string name = NSString.FromNSObject(objc_msgSend(device, selLocalizedName));
-                    string uid = NSString.FromNSObject(objc_msgSend(device, selUniqueID));
-
-                    devices.Add(new MacCameraInfo { Name = name, UniqueID = uid });
-                }
-
-                return devices;
+                _mediaPlayer.Play();
+                StatusChanged?.Invoke($"Camera started => Vendor uid: {_deviceUID}, backend API: {media.Mrl}, Resolution: {_width}x{_height}");
             }
 
-            public static class NSArray
+            public void Stop()
             {
-                [DllImport("/System/Library/Frameworks/Foundation.framework/Foundation")]
-                public static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
-
-                public static int GetCount(IntPtr nsArray)
-                {
-                    IntPtr selCount = sel_registerName("count");
-                    return (int)objc_msgSend_ulong(nsArray, selCount);
-                }
-
-                public static IntPtr GetObjectAtIndex(IntPtr nsArray, int index)
-                {
-                    IntPtr selObjectAtIndex = sel_registerName("objectAtIndex:");
-                    return objc_msgSend(nsArray, selObjectAtIndex, (IntPtr)index);
-                }
+                _mediaPlayer?.Stop();
+                _mediaPlayer?.Dispose();
             }
 
-            public static class NSString
+            #region -- AVFoundation через P/Invoke в macOS --
+            public static class AVFoundationCameraHelper
             {
-                private const string AVF_LIB = "/System/Library/Frameworks/Foundation.framework/Foundation";
-
-                [DllImport(AVF_LIB)]
-                public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
-                //[DllImport(AVF_LIB)]
-                //public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string str);
-                [DllImport(AVF_LIB)]
-                public static extern IntPtr AVMediaTypeVideo();
-
-                //public static IntPtr Create(string str)
-                //{
-                //    IntPtr nsStringClass = objc_getClass("NSString");
-                //    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
-                //    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
-                //}
-
-                public static string FromNSObject(IntPtr nsString)
+                #region -- public methods --
+                public static List<(string Device, List<(string Format, List<(int W, int H)> Sizes)>)> GetCameraModes()
                 {
-                    IntPtr selUTF8String = sel_registerName("UTF8String");
-                    IntPtr cStrPtr = objc_msgSend(nsString, selUTF8String);
-                    return Marshal.PtrToStringUTF8(cStrPtr);
+                    var result = new List<(string, List<(string, List<(int, int)>)>)>();
+
+                    var videoDevices = AVFoundationCameraHelper.GetVideoDevices();
+                    foreach (var device in videoDevices)
+                    {
+
+                        result.Add((device.UniqueID, default!));
+                    }
+
+                    return result;
+                }
+                #endregion
+
+                private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
+
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_getClass(string className);
+
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr sel_registerName(string selectorName);
+
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr mediaType);
+
+                private static List<(string Name, string UniqueID)> GetVideoDevices()
+                {
+                    var devices = new List<(string Name, string UniqueID)>();
+
+                    IntPtr avCaptureDeviceClass = objc_getClass("AVCaptureDevice");
+                    IntPtr selDevicesWithMediaType = sel_registerName("devicesWithMediaType:");
+                    IntPtr selLocalizedName = sel_registerName("localizedName");
+                    IntPtr selUniqueID = sel_registerName("uniqueID");
+
+                    IntPtr mediaType = NSString.AVMediaTypeVideo();//.Create("vide"); // "vide" → AVMediaTypeVideo
+
+                    IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
+                    int count = NSArray.GetCount(devicesArray);
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
+                        string name = NSString.FromNSObject(objc_msgSend(device, selLocalizedName));
+                        string uid = NSString.FromNSObject(objc_msgSend(device, selUniqueID));
+
+                        devices.Add((name, uid));
+                    }
+
+                    return devices;
+                }
+
+                public static class NSArray
+                {
+                    [DllImport("/System/Library/Frameworks/Foundation.framework/Foundation")]
+                    public static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
+
+                    public static int GetCount(IntPtr nsArray)
+                    {
+                        IntPtr selCount = sel_registerName("count");
+                        return (int)objc_msgSend_ulong(nsArray, selCount);
+                    }
+
+                    public static IntPtr GetObjectAtIndex(IntPtr nsArray, int index)
+                    {
+                        IntPtr selObjectAtIndex = sel_registerName("objectAtIndex:");
+                        return objc_msgSend(nsArray, selObjectAtIndex, (IntPtr)index);
+                    }
+                }
+
+                public static class NSString
+                {
+                    private const string AVF_LIB = "/System/Library/Frameworks/Foundation.framework/Foundation";
+
+                    [DllImport(AVF_LIB)]
+                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+                    //[DllImport(AVF_LIB)]
+                    //public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string str);
+                    [DllImport(AVF_LIB)]
+                    public static extern IntPtr AVMediaTypeVideo();
+
+                    //public static IntPtr Create(string str)
+                    //{
+                    //    IntPtr nsStringClass = objc_getClass("NSString");
+                    //    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
+                    //    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
+                    //}
+
+                    public static string FromNSObject(IntPtr nsString)
+                    {
+                        IntPtr selUTF8String = sel_registerName("UTF8String");
+                        IntPtr cStrPtr = objc_msgSend(nsString, selUTF8String);
+                        return Marshal.PtrToStringUTF8(cStrPtr);
+                    }
                 }
             }
+            #endregion
         }
         #endregion
     }
