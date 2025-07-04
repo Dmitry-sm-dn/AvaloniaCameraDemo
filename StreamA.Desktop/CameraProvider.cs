@@ -599,6 +599,9 @@ namespace StreamA.Desktop
                 private static extern IntPtr sel_registerName(string selectorName);
 
                 [DllImport(OBJC_LIB)]
+                private static extern IntPtr sel_getUid(string name);
+
+                [DllImport(OBJC_LIB)]
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr mediaType);
@@ -613,6 +616,7 @@ namespace StreamA.Desktop
                     IntPtr selUniqueID = sel_registerName("uniqueID");
 
                     IntPtr mediaType = GetAVMediaTypeVideo();//.Create("vide"); // "vide" → AVMediaTypeVideo
+                    string value = PtrToString(mediaType);
 
                     IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
                     int count = NSArray.GetCount(devicesArray);
@@ -641,6 +645,19 @@ namespace StreamA.Desktop
                     IntPtr selAVMediaTypeVideo = sel_registerName("AVMediaTypeVideo");
                     return objc_msgSend(avClass, selAVMediaTypeVideo);
                 }
+                public static string PtrToString(IntPtr nsStringPtr)
+                {
+                    // Получаем селектор UTF8String
+                    IntPtr utf8Sel = sel_getUid("UTF8String");
+
+                    // Отправляем сообщение NSString объекту
+                    IntPtr utf8Ptr = objc_msgSend(nsStringPtr, utf8Sel);
+
+                    // Преобразуем в C# строку
+                    return Marshal.PtrToStringUTF8(utf8Ptr);
+                }
+
+
 
                 public static class NSArray
                 {
