@@ -591,16 +591,12 @@ namespace StreamA.Desktop
                 #endregion
 
                 private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
-
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr objc_getClass(string className);
-
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr sel_registerName(string selectorName);
-
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr sel_getUid(string name);
-
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
                 [DllImport(OBJC_LIB)]
@@ -633,18 +629,20 @@ namespace StreamA.Desktop
                     return devices;
                 }
 
+                [DllImport("/usr/lib/libSystem.B.dylib")]
+                static extern IntPtr dlopen(string path, int mode);
+
+                [DllImport("/usr/lib/libSystem.B.dylib")]
+                static extern IntPtr dlsym(IntPtr handle, string symbol);
+
+                const int RTLD_LAZY = 0x1;
+
                 public static IntPtr GetAVMediaTypeVideo()
                 {
-                    // Класс AVMediaTypeVideo хранится в Objective-C как NSString переменная, которая возвращается методом
-                    IntPtr mediaTypeClass = objc_getClass("AVMediaTypeVideo");
-                    if (mediaTypeClass != IntPtr.Zero)
-                        return mediaTypeClass;
-
-                    // Альтернатива через AVFoundation класс:
-                    IntPtr avClass = objc_getClass("AVFoundation");
-                    IntPtr selAVMediaTypeVideo = sel_registerName("AVMediaTypeVideo");
-                    return objc_msgSend(avClass, selAVMediaTypeVideo);
+                    IntPtr handle = dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_LAZY);
+                    return dlsym(handle, "AVMediaTypeVideo");
                 }
+
                 public static string PtrToString(IntPtr nsStringPtr)
                 {
                     // Получаем селектор UTF8String
