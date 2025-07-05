@@ -603,6 +603,13 @@ namespace StreamA.Desktop
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr nsString);
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string strValue);
+                [DllImport(OBJC_LIB)]
+                private static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
+                [DllImport(OBJC_LIB)]
+                private static extern bool object_isKindOfClass(IntPtr obj, IntPtr cls);
+
+
+
 
                 private const string AVMediaTypeVideo = "video";
 
@@ -649,11 +656,16 @@ namespace StreamA.Desktop
 
                 public static class NSArray
                 {
-                    [DllImport("/System/Library/Frameworks/Foundation.framework/Foundation")]
-                    public static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
-
                     public static int GetCount(IntPtr nsArray)
                     {
+                        if (nsArray == IntPtr.Zero)
+                            throw new InvalidOperationException("NSArray pointer is NULL");
+
+                        IntPtr classNSArray = objc_getClass("NSArray");
+                        bool isArray = object_isKindOfClass(nsArray, classNSArray);
+                        if (!isArray)
+                            throw new InvalidOperationException("Object is not NSArray");
+
                         IntPtr selCount = sel_registerName("count");
                         return (int)objc_msgSend_ulong(nsArray, selCount);
                     }
