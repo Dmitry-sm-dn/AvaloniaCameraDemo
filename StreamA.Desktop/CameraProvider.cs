@@ -608,6 +608,9 @@ namespace StreamA.Desktop
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
                     [DllImport("/usr/lib/libobjc.A.dylib")]
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
+
+                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    public static extern nint objc_msgSend_nint(IntPtr receiver, IntPtr selector);
                 }
 
 
@@ -640,8 +643,28 @@ namespace StreamA.Desktop
                     IntPtr devicesSel = ObjCRuntime.sel_registerName("devices");
                     IntPtr devicesArray = ObjCRuntime.objc_msgSend(discoverySession, devicesSel);
 
-                    Console.WriteLine("Устройства обнаружены!");
-                    // Здесь можно добавить перебор NSArray и вывод имен
+                    IntPtr countSel = ObjCRuntime.sel_registerName("count");
+                    nint count = ObjCRuntime.objc_msgSend_nint(devicesArray, countSel);
+
+                    IntPtr objectAtIndexSel = ObjCRuntime.sel_registerName("objectAtIndex:");
+
+                    IntPtr localizedNameSel = ObjCRuntime.sel_registerName("localizedName");
+                    IntPtr uniqueIDSel = ObjCRuntime.sel_registerName("uniqueID");
+
+                    for (nint i = 0; i < count; i++)
+                    {
+                        IntPtr device = ObjCRuntime.objc_msgSend(devicesArray, objectAtIndexSel, i);
+
+                        IntPtr namePtr = ObjCRuntime.objc_msgSend(device, localizedNameSel);
+                        IntPtr uidPtr = ObjCRuntime.objc_msgSend(device, uniqueIDSel);
+
+                        string name = NSStringToString(namePtr);
+                        string uid = NSStringToString(uidPtr);
+
+                        Console.WriteLine($"📷 Device: {name}, UID: {uid}");
+                    }
+
+
 
                     /*for (int i = 0; i < count; i++)
                     {
@@ -665,6 +688,14 @@ namespace StreamA.Desktop
                     IntPtr nsString = ObjCRuntime.objc_msgSend(nsStringAlloc, initWithUTF8Sel, Marshal.StringToHGlobalAuto(str));
                     return nsString;
                 }
+                private static string NSStringToString(IntPtr nsString)
+                {
+                    IntPtr utf8Sel = ObjCRuntime.sel_registerName("UTF8String");
+                    IntPtr utf8Ptr = ObjCRuntime.objc_msgSend(nsString, utf8Sel);
+                    return Marshal.PtrToStringUTF8(utf8Ptr);
+                }
+
+
 
                 private static IntPtr CreateNSArray(IntPtr[] items)
                 {
