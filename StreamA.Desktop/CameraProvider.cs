@@ -714,6 +714,13 @@ namespace StreamA.Desktop
 
                 private const string AVMediaTypeVideo = "video";
 
+                [StructLayout(LayoutKind.Sequential)]
+                public struct CGSize
+                {
+                    public double width;
+                    public double height;
+                }
+
                 private static List<(string Name, string UniqueID)> GetVideoDevices()
                 {
                     var devices = new List<(string Name, string UniqueID)>();
@@ -726,7 +733,7 @@ namespace StreamA.Desktop
 
                     // Создаем NSArray с типом камеры
                     IntPtr wideAngleCameraType = CreateNSString("AVCaptureDeviceTypeBuiltInWideAngleCamera");
-                    IntPtr externalCameraType = CreateNSString("AVCaptureDeviceTypeExternalUnknown");
+                    IntPtr externalCameraType = CreateNSString("AVCaptureDeviceTypeExternal");
                     IntPtr deviceTypesArray = CreateNSArray([wideAngleCameraType, externalCameraType]);
 
                     // NSString для mediaType
@@ -762,6 +769,38 @@ namespace StreamA.Desktop
 
                         //Console.WriteLine($"📷 Device: {name}, UID: {uid}");
                         devices.Add((name, uid));
+
+                        IntPtr formatsSel = ObjCRuntime.sel_registerName("formats");
+                        IntPtr formatCountSel = ObjCRuntime.sel_registerName("count");
+                        IntPtr formatAtIndexSel = ObjCRuntime.sel_registerName("objectAtIndex:");
+
+                        IntPtr formatDescSel = ObjCRuntime.sel_registerName("formatDescription");
+                        IntPtr mediaSubTypeSel = ObjCRuntime.sel_registerName("mediaSubType");
+                        IntPtr dimensionsSel = ObjCRuntime.sel_registerName("dimensions");
+
+                        IntPtr formatsArray = ObjCRuntime.objc_msgSend(device, formatsSel);
+                        nint formatCount = ObjCRuntime.objc_msgSend(formatsArray, formatCountSel);
+
+                        for (nint j = 0; j < formatCount; j++)
+                        {
+                            IntPtr format = ObjCRuntime.objc_msgSend(formatsArray, formatAtIndexSel, i);
+                            IntPtr formatDesc = ObjCRuntime.objc_msgSend(format, formatDescSel);
+
+                            // Получаем FourCC
+                            IntPtr fourccPtr = ObjCRuntime.objc_msgSend(formatDesc, mediaSubTypeSel);
+                            uint fourcc = (uint)fourccPtr.ToInt64(); // FourCC — это UInt32
+
+                            // Преобразуем в строку
+                            string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));
+
+                            // Получаем размеры
+                            IntPtr dimensions = ObjCRuntime.objc_msgSend(formatDesc, dimensionsSel);
+                            CGSize size = Marshal.PtrToStructure<CGSize>(dimensions);
+
+                            Console.WriteLine($"🎞 Format: {fourccStr}, Resolution: {size.width}x{size.height}");
+                        }
+
+
                     }
 
                     return devices;
