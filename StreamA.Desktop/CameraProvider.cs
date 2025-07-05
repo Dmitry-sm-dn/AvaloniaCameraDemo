@@ -571,7 +571,7 @@ namespace StreamA.Desktop
                 _mediaPlayer?.Dispose();
             }
 
-            #region -- AVFoundation через P/Invoke в macOS --
+            /*#region -- AVFoundation через P/Invoke в macOS --
             public static class AVFoundationCameraHelper
             {
                 #region -- public methods --
@@ -670,9 +670,9 @@ namespace StreamA.Desktop
                     }
                 }
             }
-            #endregion
+            #endregion*/
 
-            /*#region -- AVFoundation через P/Invoke в macOS --
+            #region -- AVFoundation через P/Invoke в macOS --
             public static class AVFoundationCameraHelper
             {
                 #region -- public methods --
@@ -684,7 +684,7 @@ namespace StreamA.Desktop
                     foreach (var device in videoDevices)
                     {
 
-                        result.Add((device.UniqueID, default!));
+                        result.Add((device.UniqueID, new List<(string, List<(int, int)>)>()));
                     }
 
                     return result;
@@ -709,9 +709,6 @@ namespace StreamA.Desktop
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
                     [DllImport("/usr/lib/libobjc.A.dylib")]
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
-
-                    [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend_nintA")]
-                    public static extern nint objc_msgSend_nint(IntPtr receiver, IntPtr selector);
                 }
 
 
@@ -729,7 +726,8 @@ namespace StreamA.Desktop
 
                     // Создаем NSArray с типом камеры
                     IntPtr wideAngleCameraType = CreateNSString("AVCaptureDeviceTypeBuiltInWideAngleCamera");
-                    IntPtr deviceTypesArray = CreateNSArray(new[] { wideAngleCameraType });
+                    IntPtr externalCameraType = CreateNSString("AVCaptureDeviceTypeExternalUnknown");
+                    IntPtr deviceTypesArray = CreateNSArray([wideAngleCameraType, externalCameraType]);
 
                     // NSString для mediaType
                     IntPtr mediaTypeVideo = CreateNSString("video");
@@ -745,7 +743,7 @@ namespace StreamA.Desktop
                     IntPtr devicesArray = ObjCRuntime.objc_msgSend(discoverySession, devicesSel);
 
                     IntPtr countSel = ObjCRuntime.sel_registerName("count");
-                    nint count = ObjCRuntime.objc_msgSend_nint(devicesArray, countSel);
+                    nint count = ObjCRuntime.objc_msgSend(devicesArray, countSel);
 
                     IntPtr objectAtIndexSel = ObjCRuntime.sel_registerName("objectAtIndex:");
 
@@ -762,7 +760,8 @@ namespace StreamA.Desktop
                         string name = NSStringToString(namePtr);
                         string uid = NSStringToString(uidPtr);
 
-                        Console.WriteLine($"📷 Device: {name}, UID: {uid}");
+                        //Console.WriteLine($"📷 Device: {name}, UID: {uid}");
+                        devices.Add((name, uid));
                     }
 
                     return devices;
@@ -797,10 +796,8 @@ namespace StreamA.Desktop
                     handle.Free();
                     return arrayPtr;
                 }
-
-
             }
-            #endregion*/
+            #endregion
         }
         #endregion
     }
