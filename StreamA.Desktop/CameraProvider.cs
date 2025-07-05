@@ -590,23 +590,26 @@ namespace StreamA.Desktop
                 }
                 #endregion
 
-                private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_getClass(string className);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr sel_registerName(string selectorName);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr sel_getUid(string name);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr nsString);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string strValue);
-                [DllImport(OBJC_LIB, EntryPoint = "objc_msgSend")]
-                private static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
-                [DllImport(OBJC_LIB, EntryPoint = "objc_msgSend")]
-                private static extern bool object_isKindOfClass(IntPtr obj, IntPtr cls);
+                //private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
+                public static class ObjCRuntime
+                {
+                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    public static extern IntPtr objc_getClass(string name);
+
+                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    public static extern IntPtr sel_registerName(string name);
+
+                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+
+                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1);
+                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
+                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
+                }
+
 
                 private const string AVMediaTypeVideo = "video";
 
@@ -614,65 +617,67 @@ namespace StreamA.Desktop
                 {
                     var devices = new List<(string Name, string UniqueID)>();
 
-                    IntPtr avCaptureDeviceClass = objc_getClass("AVCaptureDevice");
-                    IntPtr selDevicesWithMediaType = sel_registerName("devicesWithMediaType:");
-                    IntPtr selLocalizedName = sel_registerName("localizedName");
-                    IntPtr selUniqueID = sel_registerName("uniqueID");
+                    // Получаем класс AVCaptureDeviceDiscoverySession
+                    IntPtr cls = ObjCRuntime.objc_getClass("AVCaptureDeviceDiscoverySession");
 
-                    IntPtr mediaType = CreateRegisterName(AVMediaTypeVideo);
-                    string value = PtrToString(mediaType);//test
+                    // Селектор метода discoverySessionWithDeviceTypes:mediaType:position:
+                    IntPtr sel = ObjCRuntime.sel_registerName("discoverySessionWithDeviceTypes:mediaType:position:");
 
-                    IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
-                    int count = NSArray.GetCount(devicesArray);
+                    // Создаем NSArray с типом камеры
+                    IntPtr wideAngleCameraType = CreateNSString("AVCaptureDeviceTypeBuiltInWideAngleCamera");
+                    IntPtr deviceTypesArray = CreateNSArray(new[] { wideAngleCameraType });
 
-                    for (int i = 0; i < count; i++)
+                    // NSString для mediaType
+                    IntPtr mediaTypeVideo = CreateNSString("video");
+
+                    // Позиция камеры (0 = unspecified, 1 = front, 2 = back)
+                    IntPtr position = (IntPtr)0;
+
+                    // Вызов метода
+                    IntPtr discoverySession = ObjCRuntime.objc_msgSend(cls, sel, deviceTypesArray, mediaTypeVideo, position);
+
+                    // Получаем список устройств
+                    IntPtr devicesSel = ObjCRuntime.sel_registerName("devices");
+                    IntPtr devicesArray = ObjCRuntime.objc_msgSend(discoverySession, devicesSel);
+
+                    Console.WriteLine("Устройства обнаружены!");
+                    // Здесь можно добавить перебор NSArray и вывод имен
+
+                    /*for (int i = 0; i < count; i++)
                     {
                         IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
                         string name = PtrToString(objc_msgSend(device, selLocalizedName));
                         string uid = PtrToString(objc_msgSend(device, selUniqueID));
 
                         devices.Add((name, uid));
-                    }
+                    }*/
 
                     return devices;
                 }
 
-                public static IntPtr CreateRegisterName(string str)
+                private static IntPtr CreateNSString(string str)
                 {
-                    IntPtr nsStringClass = objc_getClass("NSString");
-                    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
-                    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
+                    IntPtr nsStringClass = ObjCRuntime.objc_getClass("NSString");
+                    IntPtr allocSel = ObjCRuntime.sel_registerName("alloc");
+                    IntPtr initWithUTF8Sel = ObjCRuntime.sel_registerName("initWithUTF8String:");
+
+                    IntPtr nsStringAlloc = ObjCRuntime.objc_msgSend(nsStringClass, allocSel);
+                    IntPtr nsString = ObjCRuntime.objc_msgSend(nsStringAlloc, initWithUTF8Sel, Marshal.StringToHGlobalAuto(str));
+                    return nsString;
                 }
 
-                public static string PtrToString(IntPtr nsStringPtr)
+                private static IntPtr CreateNSArray(IntPtr[] items)
                 {
-                    IntPtr utf8Sel = sel_getUid("UTF8String");// Получаем селектор UTF8String
-                    IntPtr utf8Ptr = objc_msgSend(nsStringPtr, utf8Sel);// Отправляем сообщение NSString объекту
-                    return Marshal.PtrToStringUTF8(utf8Ptr);// Преобразуем в C# строку
+                    IntPtr nsArrayClass = ObjCRuntime.objc_getClass("NSArray");
+                    IntPtr arrayWithObjectsSel = ObjCRuntime.sel_registerName("arrayWithObjects:count:");
+
+                    GCHandle handle = GCHandle.Alloc(items, GCHandleType.Pinned);
+                    IntPtr arrayPtr = ObjCRuntime.objc_msgSend(nsArrayClass, arrayWithObjectsSel, handle.AddrOfPinnedObject(), (IntPtr)items.Length);
+                    handle.Free();
+                    return arrayPtr;
                 }
 
-                public static class NSArray
-                {
-                    public static int GetCount(IntPtr nsArray)
-                    {
-                        if (nsArray == IntPtr.Zero)
-                            throw new InvalidOperationException("NSArray pointer is NULL");
 
-                        IntPtr classNSArray = objc_getClass("NSArray");
-                        bool isArray = object_isKindOfClass(nsArray, classNSArray);
-                        if (!isArray)
-                            throw new InvalidOperationException("Object is not NSArray");
-
-                        IntPtr selCount = sel_registerName("count");
-                        return (int)objc_msgSend_ulong(nsArray, selCount);
-                    }
-
-                    public static IntPtr GetObjectAtIndex(IntPtr nsArray, int index)
-                    {
-                        IntPtr selObjectAtIndex = sel_registerName("objectAtIndex:");
-                        return objc_msgSend(nsArray, selObjectAtIndex, (IntPtr)index);
-                    }
-                }
             }
             #endregion
         }
