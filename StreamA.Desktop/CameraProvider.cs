@@ -590,6 +590,107 @@ namespace StreamA.Desktop
                 }
                 #endregion
 
+                private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_getClass(string className);
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr sel_registerName(string selectorName);
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr sel_getUid(string name);
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr nsString);
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string strValue);
+
+                private const string AVMediaTypeVideo = "video";
+
+                private static List<(string Name, string UniqueID)> GetVideoDevices()
+                {
+                    var devices = new List<(string Name, string UniqueID)>();
+
+                    IntPtr avCaptureDeviceClass = objc_getClass("AVCaptureDevice");
+                    IntPtr selDevicesWithMediaType = sel_registerName("devicesWithMediaType:");
+                    IntPtr selLocalizedName = sel_registerName("localizedName");
+                    IntPtr selUniqueID = sel_registerName("uniqueID");
+
+                    IntPtr mediaType = CreateRegisterName(AVMediaTypeVideo);
+                    string value = PtrToString(mediaType);//test
+
+                    IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
+                    int count = NSArray.GetCount(devicesArray);
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
+                        string name = PtrToString(objc_msgSend(device, selLocalizedName));
+                        string uid = PtrToString(objc_msgSend(device, selUniqueID));
+
+                        devices.Add((name, uid));
+                    }
+
+                    return devices;
+                }
+
+                public static IntPtr CreateRegisterName(string str)
+                {
+                    IntPtr nsStringClass = objc_getClass("NSString");
+                    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
+                    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
+                }
+
+                public static string PtrToString(IntPtr nsStringPtr)
+                {
+                    IntPtr utf8Sel = sel_getUid("UTF8String");// Получаем селектор UTF8String
+                    IntPtr utf8Ptr = objc_msgSend(nsStringPtr, utf8Sel);// Отправляем сообщение NSString объекту
+                    return Marshal.PtrToStringUTF8(utf8Ptr);// Преобразуем в C# строку
+                }
+
+                public static class NSArray
+                {
+                    public static int GetCount(IntPtr nsArray)
+                    {
+                        if (nsArray == IntPtr.Zero)
+                            throw new InvalidOperationException("NSArray pointer is NULL");
+
+                        IntPtr classNSArray = objc_getClass("NSArray");
+                        var isArray = objc_msgSend(nsArray, classNSArray);
+                        if (isArray == 0)
+                            throw new InvalidOperationException("Object is not NSArray");
+
+                        IntPtr selCount = sel_registerName("count");
+                        return (int)objc_msgSend(nsArray, selCount);
+                    }
+
+                    public static IntPtr GetObjectAtIndex(IntPtr nsArray, int index)
+                    {
+                        IntPtr selObjectAtIndex = sel_registerName("objectAtIndex:");
+                        return objc_msgSend(nsArray, selObjectAtIndex, (IntPtr)index);
+                    }
+                }
+            }
+            #endregion
+
+            /*#region -- AVFoundation через P/Invoke в macOS --
+            public static class AVFoundationCameraHelper
+            {
+                #region -- public methods --
+                public static List<(string Device, List<(string Format, List<(int W, int H)> Sizes)>)> GetCameraModes()
+                {
+                    var result = new List<(string, List<(string, List<(int, int)>)>)>();
+
+                    var videoDevices = AVFoundationCameraHelper.GetVideoDevices();
+                    foreach (var device in videoDevices)
+                    {
+
+                        result.Add((device.UniqueID, default!));
+                    }
+
+                    return result;
+                }
+                #endregion
+
                 //private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
                 public static class ObjCRuntime
                 {
@@ -609,7 +710,7 @@ namespace StreamA.Desktop
                     [DllImport("/usr/lib/libobjc.A.dylib")]
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
 
-                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend_nintA")]
                     public static extern nint objc_msgSend_nint(IntPtr receiver, IntPtr selector);
                 }
 
@@ -664,17 +765,6 @@ namespace StreamA.Desktop
                         Console.WriteLine($"📷 Device: {name}, UID: {uid}");
                     }
 
-
-
-                    /*for (int i = 0; i < count; i++)
-                    {
-                        IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
-                        string name = PtrToString(objc_msgSend(device, selLocalizedName));
-                        string uid = PtrToString(objc_msgSend(device, selUniqueID));
-
-                        devices.Add((name, uid));
-                    }*/
-
                     return devices;
                 }
 
@@ -710,7 +800,7 @@ namespace StreamA.Desktop
 
 
             }
-            #endregion
+            #endregion*/
         }
         #endregion
     }
