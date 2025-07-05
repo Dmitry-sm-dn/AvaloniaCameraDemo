@@ -600,7 +600,11 @@ namespace StreamA.Desktop
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
                 [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr mediaType);
+                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr nsString);
+                [DllImport(OBJC_LIB)]
+                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string strValue);
+
+                private const string AVMediaTypeVideo = "video";
 
                 private static List<(string Name, string UniqueID)> GetVideoDevices()
                 {
@@ -611,8 +615,8 @@ namespace StreamA.Desktop
                     IntPtr selLocalizedName = sel_registerName("localizedName");
                     IntPtr selUniqueID = sel_registerName("uniqueID");
 
-                    IntPtr mediaType = GetAVMediaTypeVideo();//.Create("vide"); // "vide" → AVMediaTypeVideo
-                    string value = PtrToString(mediaType);
+                    IntPtr mediaType = CreateRegisterName(AVMediaTypeVideo);
+                    string value = PtrToString(mediaType);//test
 
                     IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
                     int count = NSArray.GetCount(devicesArray);
@@ -620,8 +624,8 @@ namespace StreamA.Desktop
                     for (int i = 0; i < count; i++)
                     {
                         IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
-                        string name = NSString.FromNSObject(objc_msgSend(device, selLocalizedName));
-                        string uid = NSString.FromNSObject(objc_msgSend(device, selUniqueID));
+                        string name = PtrToString(objc_msgSend(device, selLocalizedName));
+                        string uid = PtrToString(objc_msgSend(device, selUniqueID));
 
                         devices.Add((name, uid));
                     }
@@ -629,33 +633,19 @@ namespace StreamA.Desktop
                     return devices;
                 }
 
-                [DllImport("/usr/lib/libSystem.B.dylib")]
-                static extern IntPtr dlopen(string path, int mode);
-
-                [DllImport("/usr/lib/libSystem.B.dylib")]
-                static extern IntPtr dlsym(IntPtr handle, string symbol);
-
-                const int RTLD_LAZY = 0x1;
-
-                public static IntPtr GetAVMediaTypeVideo()
+                public static IntPtr CreateRegisterName(string str)
                 {
-                    IntPtr handle = dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_LAZY);
-                    return dlsym(handle, "AVMediaTypeVideo");
+                    IntPtr nsStringClass = objc_getClass("NSString");
+                    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
+                    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
                 }
 
                 public static string PtrToString(IntPtr nsStringPtr)
                 {
-                    // Получаем селектор UTF8String
-                    IntPtr utf8Sel = sel_getUid("UTF8String");
-
-                    // Отправляем сообщение NSString объекту
-                    IntPtr utf8Ptr = objc_msgSend(nsStringPtr, utf8Sel);
-
-                    // Преобразуем в C# строку
-                    return Marshal.PtrToStringUTF8(utf8Ptr);
+                    IntPtr utf8Sel = sel_getUid("UTF8String");// Получаем селектор UTF8String
+                    IntPtr utf8Ptr = objc_msgSend(nsStringPtr, utf8Sel);// Отправляем сообщение NSString объекту
+                    return Marshal.PtrToStringUTF8(utf8Ptr);// Преобразуем в C# строку
                 }
-
-
 
                 public static class NSArray
                 {
@@ -672,32 +662,6 @@ namespace StreamA.Desktop
                     {
                         IntPtr selObjectAtIndex = sel_registerName("objectAtIndex:");
                         return objc_msgSend(nsArray, selObjectAtIndex, (IntPtr)index);
-                    }
-                }
-
-                public static class NSString
-                {
-                    private const string AVF_LIB = "/System/Library/Frameworks/Foundation.framework/Foundation";
-
-                    [DllImport(AVF_LIB)]
-                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
-                    //[DllImport(AVF_LIB)]
-                    //public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string str);
-                    //[DllImport(AVF_LIB)]
-                    //public static extern IntPtr AVMediaTypeVideo();
-
-                    //public static IntPtr Create(string str)
-                    //{
-                    //    IntPtr nsStringClass = objc_getClass("NSString");
-                    //    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
-                    //    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
-                    //}
-
-                    public static string FromNSObject(IntPtr nsString)
-                    {
-                        IntPtr selUTF8String = sel_registerName("UTF8String");
-                        IntPtr cStrPtr = objc_msgSend(nsString, selUTF8String);
-                        return Marshal.PtrToStringUTF8(cStrPtr);
                     }
                 }
             }
