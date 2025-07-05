@@ -603,13 +603,10 @@ namespace StreamA.Desktop
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr nsString);
                 [DllImport(OBJC_LIB)]
                 private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string strValue);
-                [DllImport(OBJC_LIB)]
+                [DllImport(OBJC_LIB, EntryPoint = "objc_msgSend")]
                 private static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
-                [DllImport(OBJC_LIB)]
+                [DllImport(OBJC_LIB, EntryPoint = "objc_msgSend")]
                 private static extern bool object_isKindOfClass(IntPtr obj, IntPtr cls);
-
-
-
 
                 private const string AVMediaTypeVideo = "video";
 
