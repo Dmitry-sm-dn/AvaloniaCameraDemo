@@ -720,6 +720,9 @@ namespace StreamA.Desktop
                     public double width;
                     public double height;
                 }
+                [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
+                public static extern uint CMFormatDescriptionGetMediaSubType(IntPtr formatDescription);
+
 
                 private static List<(string Name, string UniqueID)> GetVideoDevices()
                 {
@@ -783,15 +786,18 @@ namespace StreamA.Desktop
 
                         for (nint j = 0; j < formatCount; j++)
                         {
-                            IntPtr format = ObjCRuntime.objc_msgSend(formatsArray, formatAtIndexSel, i);
+                            IntPtr format = ObjCRuntime.objc_msgSend(formatsArray, formatAtIndexSel, j);
                             IntPtr formatDesc = ObjCRuntime.objc_msgSend(format, formatDescSel);
 
                             // Получаем FourCC
-                            IntPtr fourccPtr = ObjCRuntime.objc_msgSend(formatDesc, mediaSubTypeSel);
-                            uint fourcc = (uint)fourccPtr.ToInt64(); // FourCC — это UInt32
+                            uint fourcc = CMFormatDescriptionGetMediaSubType(formatDesc);
+                            string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));
+                            Console.WriteLine($"🎞 Format: {fourccStr}");
+                            //IntPtr fourccPtr = ObjCRuntime.objc_msgSend(formatDesc, mediaSubTypeSel);
+                            //uint fourcc = (uint)fourccPtr.ToInt64(); // FourCC — это UInt32
 
                             // Преобразуем в строку
-                            string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));
+                            //string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));
 
                             // Получаем размеры
                             IntPtr dimensions = ObjCRuntime.objc_msgSend(formatDesc, dimensionsSel);
