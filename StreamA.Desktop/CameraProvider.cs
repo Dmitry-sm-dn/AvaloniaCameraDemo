@@ -715,11 +715,13 @@ namespace StreamA.Desktop
                 private const string AVMediaTypeVideo = "video";
 
                 [StructLayout(LayoutKind.Sequential)]
-                public struct CGSize
+                public struct CMVideoDimensions
                 {
-                    public double width;
-                    public double height;
+                    public int width;
+                    public int height;
                 }
+                [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
+                public static extern CMVideoDimensions CMVideoFormatDescriptionGetDimensions(IntPtr formatDescription);
                 [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
                 public static extern uint CMFormatDescriptionGetMediaSubType(IntPtr formatDescription);
 
@@ -800,10 +802,12 @@ namespace StreamA.Desktop
                             //string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));
 
                             // Получаем размеры
-                            IntPtr dimensions = ObjCRuntime.objc_msgSend(formatDesc, dimensionsSel);
-                            CGSize size = Marshal.PtrToStructure<CGSize>(dimensions);
+                            CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDesc);
+                            Console.WriteLine($"📐 Resolution: {dimensions.width}x{dimensions.height}");
+                            //IntPtr dimensions = ObjCRuntime.objc_msgSend(formatDesc, dimensionsSel);
+                            //CGSize size = Marshal.PtrToStructure<CGSize>(dimensions);
 
-                            Console.WriteLine($"🎞 Format: {fourccStr}, Resolution: {size.width}x{size.height}");
+                            //Console.WriteLine($"🎞 Format: {fourccStr}, Resolution: {size.width}x{size.height}");
                         }
 
 
