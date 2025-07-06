@@ -592,32 +592,34 @@ namespace StreamA.Desktop
                 }
                 #endregion
 
+                //https://developer.apple.com/documentation/avfoundation?language=objc
+                //https://developer.apple.com/documentation/coremedia
                 public static class ObjCRuntime
                 {
                     private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
 
                     [DllImport(OBJC_LIB)]
-                    public static extern IntPtr objc_getClass(string name);
+                    private static extern IntPtr objc_getClass(string name);
 
                     [DllImport(OBJC_LIB)]
-                    public static extern IntPtr sel_registerName(string name);
+                    private static extern IntPtr sel_registerName(string name);
 
                     [DllImport(OBJC_LIB)]
-                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+                    private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
                     [DllImport(OBJC_LIB)]
-                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1);
+                    private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1);
                     [DllImport(OBJC_LIB)]
-                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
+                    private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
                     [DllImport(OBJC_LIB)]
-                    public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
-
-                    [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
-                    public static extern uint CMFormatDescriptionGetMediaSubType(IntPtr formatDescription);
+                    private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
 
                     [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
-                    public static extern CMVideoDimensions CMVideoFormatDescriptionGetDimensions(IntPtr formatDescription);
+                    private static extern uint CMFormatDescriptionGetMediaSubType(IntPtr formatDescription);//https://developer.apple.com/documentation/coremedia/cmformatdescriptiongetmediasubtype%28_:%29
 
-                    private const string AVMediaTypeVideo = "video";
+                    [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
+                    private static extern CMVideoDimensions CMVideoFormatDescriptionGetDimensions(IntPtr formatDescription);//https://developer.apple.com/documentation/coremedia/cmvideoformatdescriptiongetdimensions(_:)
+
+                    private const string AVMediaTypeVideo = "video";//https://developer.apple.com/documentation/avfoundation/avmediatype/video?language=objc
 
                     [StructLayout(LayoutKind.Sequential)]
                     public struct CMVideoDimensions
