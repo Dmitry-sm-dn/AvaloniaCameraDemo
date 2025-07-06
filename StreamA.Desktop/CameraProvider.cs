@@ -8,8 +8,10 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using ZXing.PDF417.Internal;
 
 namespace StreamA.Desktop
 {
@@ -571,107 +573,6 @@ namespace StreamA.Desktop
                 _mediaPlayer?.Dispose();
             }
 
-            /*#region -- AVFoundation через P/Invoke в macOS --
-            public static class AVFoundationCameraHelper
-            {
-                #region -- public methods --
-                public static List<(string Device, List<(string Format, List<(int W, int H)> Sizes)>)> GetCameraModes()
-                {
-                    var result = new List<(string, List<(string, List<(int, int)>)>)>();
-
-                    var videoDevices = AVFoundationCameraHelper.GetVideoDevices();
-                    foreach (var device in videoDevices)
-                    {
-
-                        result.Add((device.UniqueID, default!));
-                    }
-
-                    return result;
-                }
-                #endregion
-
-                private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_getClass(string className);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr sel_registerName(string selectorName);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr sel_getUid(string name);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr nsString);
-                [DllImport(OBJC_LIB)]
-                private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, string strValue);
-
-                private const string AVMediaTypeVideo = "video";
-
-                private static List<(string Name, string UniqueID)> GetVideoDevices()
-                {
-                    var devices = new List<(string Name, string UniqueID)>();
-
-                    IntPtr avCaptureDeviceClass = objc_getClass("AVCaptureDevice");
-                    IntPtr selDevicesWithMediaType = sel_registerName("devicesWithMediaType:");
-                    IntPtr selLocalizedName = sel_registerName("localizedName");
-                    IntPtr selUniqueID = sel_registerName("uniqueID");
-
-                    IntPtr mediaType = CreateRegisterName(AVMediaTypeVideo);
-                    string value = PtrToString(mediaType);//test
-
-                    IntPtr devicesArray = objc_msgSend(avCaptureDeviceClass, selDevicesWithMediaType, mediaType);
-                    int count = NSArray.GetCount(devicesArray);
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        IntPtr device = NSArray.GetObjectAtIndex(devicesArray, i);
-                        string name = PtrToString(objc_msgSend(device, selLocalizedName));
-                        string uid = PtrToString(objc_msgSend(device, selUniqueID));
-
-                        devices.Add((name, uid));
-                    }
-
-                    return devices;
-                }
-
-                public static IntPtr CreateRegisterName(string str)
-                {
-                    IntPtr nsStringClass = objc_getClass("NSString");
-                    IntPtr selStringWithUTF8String = sel_registerName("stringWithUTF8String:");
-                    return objc_msgSend(nsStringClass, selStringWithUTF8String, str);
-                }
-
-                public static string PtrToString(IntPtr nsStringPtr)
-                {
-                    IntPtr utf8Sel = sel_getUid("UTF8String");// Получаем селектор UTF8String
-                    IntPtr utf8Ptr = objc_msgSend(nsStringPtr, utf8Sel);// Отправляем сообщение NSString объекту
-                    return Marshal.PtrToStringUTF8(utf8Ptr);// Преобразуем в C# строку
-                }
-
-                public static class NSArray
-                {
-                    public static int GetCount(IntPtr nsArray)
-                    {
-                        if (nsArray == IntPtr.Zero)
-                            throw new InvalidOperationException("NSArray pointer is NULL");
-
-                        IntPtr classNSArray = objc_getClass("NSArray");
-                        var isArray = objc_msgSend(nsArray, classNSArray);
-                        if (isArray == 0)
-                            throw new InvalidOperationException("Object is not NSArray");
-
-                        IntPtr selCount = sel_registerName("count");
-                        return (int)objc_msgSend(nsArray, selCount);
-                    }
-
-                    public static IntPtr GetObjectAtIndex(IntPtr nsArray, int index)
-                    {
-                        IntPtr selObjectAtIndex = sel_registerName("objectAtIndex:");
-                        return objc_msgSend(nsArray, selObjectAtIndex, (IntPtr)index);
-                    }
-                }
-            }
-            #endregion*/
-
             #region -- AVFoundation через P/Invoke в macOS --
             public static class AVFoundationCameraHelper
             {
@@ -680,170 +581,161 @@ namespace StreamA.Desktop
                 {
                     var result = new List<(string, List<(string, List<(int, int)>)>)>();
 
-                    var videoDevices = AVFoundationCameraHelper.GetVideoDevices();
-                    foreach (var device in videoDevices)
+                    var videoDevices = ObjCRuntime.GetVideoDevices();
+                    foreach (var videoDevice in videoDevices)
                     {
-
-                        result.Add((device.UniqueID, new List<(string, List<(int, int)>)>()));
+                        var formats = ObjCRuntime.GetDeviceFormats(videoDevice.device);
+                        result.Add((videoDevice.UniqueID, formats));
                     }
 
                     return result;
                 }
                 #endregion
 
-                //private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
                 public static class ObjCRuntime
                 {
-                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    private const string OBJC_LIB = "/usr/lib/libobjc.A.dylib";
+
+                    [DllImport(OBJC_LIB)]
                     public static extern IntPtr objc_getClass(string name);
 
-                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    [DllImport(OBJC_LIB)]
                     public static extern IntPtr sel_registerName(string name);
 
-                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    [DllImport(OBJC_LIB)]
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
-
-                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    [DllImport(OBJC_LIB)]
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1);
-                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    [DllImport(OBJC_LIB)]
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
-                    [DllImport("/usr/lib/libobjc.A.dylib")]
+                    [DllImport(OBJC_LIB)]
                     public static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
-                }
 
+                    [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
+                    public static extern uint CMFormatDescriptionGetMediaSubType(IntPtr formatDescription);
 
-                private const string AVMediaTypeVideo = "video";
+                    [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
+                    public static extern CMVideoDimensions CMVideoFormatDescriptionGetDimensions(IntPtr formatDescription);
 
-                [StructLayout(LayoutKind.Sequential)]
-                public struct CMVideoDimensions
-                {
-                    public int width;
-                    public int height;
-                }
-                [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
-                public static extern CMVideoDimensions CMVideoFormatDescriptionGetDimensions(IntPtr formatDescription);
-                [DllImport("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")]
-                public static extern uint CMFormatDescriptionGetMediaSubType(IntPtr formatDescription);
+                    private const string AVMediaTypeVideo = "video";
 
-
-                private static List<(string Name, string UniqueID)> GetVideoDevices()
-                {
-                    var devices = new List<(string Name, string UniqueID)>();
-
-                    // Получаем класс AVCaptureDeviceDiscoverySession
-                    IntPtr cls = ObjCRuntime.objc_getClass("AVCaptureDeviceDiscoverySession");
-
-                    // Селектор метода discoverySessionWithDeviceTypes:mediaType:position:
-                    IntPtr sel = ObjCRuntime.sel_registerName("discoverySessionWithDeviceTypes:mediaType:position:");
-
-                    // Создаем NSArray с типом камеры
-                    IntPtr wideAngleCameraType = CreateNSString("AVCaptureDeviceTypeBuiltInWideAngleCamera");
-                    IntPtr externalCameraType = CreateNSString("AVCaptureDeviceTypeExternal");
-                    IntPtr deviceTypesArray = CreateNSArray([wideAngleCameraType, externalCameraType]);
-
-                    // NSString для mediaType
-                    IntPtr mediaTypeVideo = CreateNSString("video");
-
-                    // Позиция камеры (0 = unspecified, 1 = front, 2 = back)
-                    IntPtr position = (IntPtr)0;
-
-                    // Вызов метода
-                    IntPtr discoverySession = ObjCRuntime.objc_msgSend(cls, sel, deviceTypesArray, mediaTypeVideo, position);
-
-                    // Получаем список устройств
-                    IntPtr devicesSel = ObjCRuntime.sel_registerName("devices");
-                    IntPtr devicesArray = ObjCRuntime.objc_msgSend(discoverySession, devicesSel);
-
-                    IntPtr countSel = ObjCRuntime.sel_registerName("count");
-                    nint count = ObjCRuntime.objc_msgSend(devicesArray, countSel);
-
-                    IntPtr objectAtIndexSel = ObjCRuntime.sel_registerName("objectAtIndex:");
-
-                    IntPtr localizedNameSel = ObjCRuntime.sel_registerName("localizedName");
-                    IntPtr uniqueIDSel = ObjCRuntime.sel_registerName("uniqueID");
-
-                    for (nint i = 0; i < count; i++)
+                    [StructLayout(LayoutKind.Sequential)]
+                    public struct CMVideoDimensions
                     {
-                        IntPtr device = ObjCRuntime.objc_msgSend(devicesArray, objectAtIndexSel, i);
+                        public int width;
+                        public int height;
+                    }
 
-                        IntPtr namePtr = ObjCRuntime.objc_msgSend(device, localizedNameSel);
-                        IntPtr uidPtr = ObjCRuntime.objc_msgSend(device, uniqueIDSel);
+                    public static List<(IntPtr device, string Name, string UniqueID)> GetVideoDevices()
+                    {
+                        var devices = new List<(IntPtr device, string Name, string UniqueID)>();
 
-                        string name = NSStringToString(namePtr);
-                        string uid = NSStringToString(uidPtr);
+                        var devicesArray = GetDevicesNSArray();
 
-                        //Console.WriteLine($"📷 Device: {name}, UID: {uid}");
-                        devices.Add((name, uid));
+                        IntPtr objectAtIndexSel = sel_registerName("objectAtIndex:");
+                        IntPtr countSel = sel_registerName("count");
+                        nint count = objc_msgSend(devicesArray, countSel);
 
-                        IntPtr formatsSel = ObjCRuntime.sel_registerName("formats");
-                        IntPtr formatCountSel = ObjCRuntime.sel_registerName("count");
-                        IntPtr formatAtIndexSel = ObjCRuntime.sel_registerName("objectAtIndex:");
+                        IntPtr localizedNameSel = sel_registerName("localizedName");
+                        IntPtr uniqueIDSel = sel_registerName("uniqueID");
 
-                        IntPtr formatDescSel = ObjCRuntime.sel_registerName("formatDescription");
-                        IntPtr mediaSubTypeSel = ObjCRuntime.sel_registerName("mediaSubType");
-                        IntPtr dimensionsSel = ObjCRuntime.sel_registerName("dimensions");
-
-                        IntPtr formatsArray = ObjCRuntime.objc_msgSend(device, formatsSel);
-                        nint formatCount = ObjCRuntime.objc_msgSend(formatsArray, formatCountSel);
-
-                        for (nint j = 0; j < formatCount; j++)
+                        for (nint i = 0; i < count; i++)
                         {
-                            IntPtr format = ObjCRuntime.objc_msgSend(formatsArray, formatAtIndexSel, j);
-                            IntPtr formatDesc = ObjCRuntime.objc_msgSend(format, formatDescSel);
+                            IntPtr device = ObjCRuntime.objc_msgSend(devicesArray, objectAtIndexSel, i);
+
+                            var name = NSStringToString(ObjCRuntime.objc_msgSend(device, localizedNameSel))!;//📷 Device
+                            var uid = NSStringToString(ObjCRuntime.objc_msgSend(device, uniqueIDSel))!;//UID
+
+                            devices.Add((device, name, uid));
+                        }
+
+                        return devices;
+                    }
+
+                    public static List<(string Format, List<(int Width, int Height)>)> GetDeviceFormats(IntPtr device)
+                    {
+                        var formats = new List<(string Format, List<(int Width, int Height)> Dimensions)>();
+
+                        IntPtr formatsSel = sel_registerName("formats");
+                        IntPtr formatCountSel = sel_registerName("count");
+                        IntPtr formatAtIndexSel = sel_registerName("objectAtIndex:");
+                        IntPtr formatDescSel = sel_registerName("formatDescription");
+
+                        IntPtr formatsArray = objc_msgSend(device, formatsSel);
+                        nint formatCount = objc_msgSend(formatsArray, formatCountSel);
+
+                        var format = (Format: string.Empty, Dimensions: new List<(int Width, int Height)>());
+                        for (nint i = 0; i < formatCount; i++)
+                        {
+                            IntPtr formatPtr = objc_msgSend(formatsArray, formatAtIndexSel, i);
+                            IntPtr formatDesc = objc_msgSend(formatPtr, formatDescSel);
 
                             // Получаем FourCC
                             uint fourcc = CMFormatDescriptionGetMediaSubType(formatDesc);
-                            string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));
-                            Console.WriteLine($"🎞 Format: {fourccStr}");
-                            //IntPtr fourccPtr = ObjCRuntime.objc_msgSend(formatDesc, mediaSubTypeSel);
-                            //uint fourcc = (uint)fourccPtr.ToInt64(); // FourCC — это UInt32
-
-                            // Преобразуем в строку
-                            //string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));
-
+                            string fourccStr = Encoding.ASCII.GetString(BitConverter.GetBytes(fourcc));//🎞 Format
                             // Получаем размеры
-                            CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDesc);
-                            Console.WriteLine($"📐 Resolution: {dimensions.width}x{dimensions.height}");
-                            //IntPtr dimensions = ObjCRuntime.objc_msgSend(formatDesc, dimensionsSel);
-                            //CGSize size = Marshal.PtrToStructure<CGSize>(dimensions);
+                            CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDesc);//📐 Resolution
 
-                            //Console.WriteLine($"🎞 Format: {fourccStr}, Resolution: {size.width}x{size.height}");
+                            format.Format ??= fourccStr;
+                            format.Dimensions.Add((dimensions.width, dimensions.height));
                         }
+                        formats.Add(format);
 
-
+                        return formats;
                     }
 
-                    return devices;
-                }
+                    private static IntPtr GetDevicesNSArray()
+                    {
+                        // Получаем класс AVCaptureDeviceDiscoverySession
+                        IntPtr cls = objc_getClass("AVCaptureDeviceDiscoverySession");
+                        // Селектор метода discoverySessionWithDeviceTypes:mediaType:position:
+                        IntPtr sel = ObjCRuntime.sel_registerName("discoverySessionWithDeviceTypes:mediaType:position:");
 
-                private static IntPtr CreateNSString(string str)
-                {
-                    IntPtr nsStringClass = ObjCRuntime.objc_getClass("NSString");
-                    IntPtr allocSel = ObjCRuntime.sel_registerName("alloc");
-                    IntPtr initWithUTF8Sel = ObjCRuntime.sel_registerName("initWithUTF8String:");
+                        // Создаем NSArray с типом камеры
+                        IntPtr deviceTypesArray = CreateNSArray([
+                            CreateNSString("AVCaptureDeviceTypeBuiltInWideAngleCamera"),
+                            CreateNSString("AVCaptureDeviceTypeExternal")
+                        ]);
+                        // NSString для mediaType
+                        IntPtr mediaTypeVideo = CreateNSString(AVMediaTypeVideo);
+                        // Позиция камеры (0 = unspecified, 1 = front, 2 = back)
+                        IntPtr position = (IntPtr)0;
 
-                    IntPtr nsStringAlloc = ObjCRuntime.objc_msgSend(nsStringClass, allocSel);
-                    IntPtr nsString = ObjCRuntime.objc_msgSend(nsStringAlloc, initWithUTF8Sel, Marshal.StringToHGlobalAuto(str));
-                    return nsString;
-                }
-                private static string NSStringToString(IntPtr nsString)
-                {
-                    IntPtr utf8Sel = ObjCRuntime.sel_registerName("UTF8String");
-                    IntPtr utf8Ptr = ObjCRuntime.objc_msgSend(nsString, utf8Sel);
-                    return Marshal.PtrToStringUTF8(utf8Ptr);
-                }
+                        // Вызов метода
+                        IntPtr discoverySession = ObjCRuntime.objc_msgSend(cls, sel, deviceTypesArray, mediaTypeVideo, position);
+                        // Получаем список устройств
+                        IntPtr devicesSel = ObjCRuntime.sel_registerName("devices");
+                        IntPtr devicesArray = ObjCRuntime.objc_msgSend(discoverySession, devicesSel);
 
+                        return devicesArray;
+                    }
 
+                    private static IntPtr CreateNSString(string str)
+                    {
+                        IntPtr nsStringClass = objc_getClass("NSString");
+                        IntPtr allocSel = sel_registerName("alloc");
+                        IntPtr initWithUTF8Sel = sel_registerName("initWithUTF8String:");
 
-                private static IntPtr CreateNSArray(IntPtr[] items)
-                {
-                    IntPtr nsArrayClass = ObjCRuntime.objc_getClass("NSArray");
-                    IntPtr arrayWithObjectsSel = ObjCRuntime.sel_registerName("arrayWithObjects:count:");
+                        IntPtr nsStringAlloc = objc_msgSend(nsStringClass, allocSel);
+                        IntPtr nsString = objc_msgSend(nsStringAlloc, initWithUTF8Sel, Marshal.StringToHGlobalAuto(str));
+                        return nsString;
+                    }
+                    private static string? NSStringToString(IntPtr nsString)
+                    {
+                        IntPtr utf8Sel = sel_registerName("UTF8String");
+                        IntPtr utf8Ptr = objc_msgSend(nsString, utf8Sel);
+                        return Marshal.PtrToStringUTF8(utf8Ptr);
+                    }
+                    private static IntPtr CreateNSArray(IntPtr[] items)
+                    {
+                        IntPtr nsArrayClass = objc_getClass("NSArray");
+                        IntPtr arrayWithObjectsSel = sel_registerName("arrayWithObjects:count:");
 
-                    GCHandle handle = GCHandle.Alloc(items, GCHandleType.Pinned);
-                    IntPtr arrayPtr = ObjCRuntime.objc_msgSend(nsArrayClass, arrayWithObjectsSel, handle.AddrOfPinnedObject(), (IntPtr)items.Length);
-                    handle.Free();
-                    return arrayPtr;
+                        GCHandle handle = GCHandle.Alloc(items, GCHandleType.Pinned);
+                        IntPtr arrayPtr = objc_msgSend(nsArrayClass, arrayWithObjectsSel, handle.AddrOfPinnedObject(), (IntPtr)items.Length);
+                        handle.Free();
+                        return arrayPtr;
+                    }
                 }
             }
             #endregion
