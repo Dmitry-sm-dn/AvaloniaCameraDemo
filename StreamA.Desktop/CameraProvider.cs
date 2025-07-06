@@ -678,7 +678,7 @@ namespace StreamA.Desktop
                             // Получаем размеры
                             CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDesc);//📐 Resolution
 
-                            format.Format ??= fourccStr;
+                            if(string.IsNullOrEmpty(format.Format)) format.Format = fourccStr;
                             format.Dimensions.Add((dimensions.width, dimensions.height));
                         }
                         formats.Add(format);
